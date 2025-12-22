@@ -150,3 +150,5 @@ cython_debug/
 
 # Custom resources folder
 resources/
+
+*.csv
