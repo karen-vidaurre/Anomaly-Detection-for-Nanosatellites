@@ -10,28 +10,66 @@ import optuna
 import pandas as pd
 from sklearn.model_selection import TimeSeriesSplit, cross_validate, train_test_split
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.metrics import f1_score, accuracy_score, hamming_loss, classification_report, make_scorer
+from sklearn.metrics import (
+    f1_score,
+    accuracy_score,
+    hamming_loss,
+    classification_report,
+    make_scorer,
+)
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 logger = logging.getLogger(__name__)
 
+
 def parse_arguments() -> argparse.Namespace:
     """Parses command line arguments."""
-    parser = argparse.ArgumentParser(description="Train a Decision Tree model with Optuna and Time Series CV.")
-    parser.add_argument('--data_path', type=str, default='data/raw/sim_001_full_overlaps.csv', help='Path to the input CSV data.')
-    parser.add_argument('--model_dir', type=str, default='models', help='Directory to save the model and metrics.')
-    parser.add_argument('--model_filename', type=str, default='decision_tree_model.pkl', help='Filename for the saved model.')
-    parser.add_argument('--metrics_filename', type=str, default='decision_tree_metrics.txt', help='Filename for the metrics report.')
-    parser.add_argument('--n_trials', type=int, default=50, help='Number of Optuna trials.')
-    parser.add_argument('--n_splits', type=int, default=5, help='Number of Time Series CV splits.')
-    
+    parser = argparse.ArgumentParser(
+        description="Train a Decision Tree model with Optuna and Time Series CV."
+    )
+    parser.add_argument(
+        "--data_path",
+        type=str,
+        default="resources/raw/sim_001_full_overlaps.csv",
+        help="Path to the input CSV data.",
+    )
+    parser.add_argument(
+        "--model_dir",
+        type=str,
+        default="models",
+        help="Directory to save the model and metrics.",
+    )
+    parser.add_argument(
+        "--model_filename",
+        type=str,
+        default=None,
+        help="Filename for the saved model. If None, defaults to 'decision_tree_model_w{window_size}.pkl'.",
+    )
+    parser.add_argument(
+        "--metrics_filename",
+        type=str,
+        default=None,
+        help="Filename for the metrics report. If None, defaults to 'decision_tree_metrics_w{window_size}.txt'.",
+    )
+    parser.add_argument(
+        "--n_trials", type=int, default=30, help="Number of Optuna trials."
+    )
+    parser.add_argument(
+        "--window_size",
+        type=int,
+        default=1,
+        help="Window size for rolling features. 1=Raw, >1=Rolling Variance/Mean.",
+    )
+    parser.add_argument(
+        "--n_splits", type=int, default=5, help="Number of Time Series CV splits."
+    )
+
     return parser.parse_args()
+
 
 def load_data(data_path: str) -> pd.DataFrame:
     """Loads data from CSV."""
@@ -48,35 +86,122 @@ def load_data(data_path: str) -> pd.DataFrame:
         logger.error(f"Failed to load data: {e}")
         sys.exit(1)
 
-def preprocess_data(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.DataFrame, List[str]]:
-    """Separates features and targets."""
-    feature_prefixes = ('Vout_ss', 'mout_mtq', 'out_gps', 'wout_gyro', 'point_error', 'Bout_magn')
-    feature_cols = [c for c in df.columns if any(c.startswith(p) for p in feature_prefixes)]
-    target_cols = [c for c in df.columns if c.startswith('fault_')]
 
-    if not feature_cols:
+def save_data_subsets(X_train, X_test, y_train, y_test, output_dir, window_size):
+    """
+    Saves the train and test subsets to CSV files with window_size in filename.
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Combinamos X e y para que cada archivo sea autocontenido
+    train_full = pd.concat([X_train, y_train], axis=1)
+    test_full = pd.concat([X_test, y_test], axis=1)
+
+    train_filename = f"train_split_w{window_size}.csv"
+    test_filename = f"test_split_w{window_size}.csv"
+
+    train_full.to_csv(os.path.join(output_dir, train_filename), index=False)
+    test_full.to_csv(os.path.join(output_dir, test_filename), index=False)
+
+    logger.info(
+        f"Subconjuntos trazables guardados en: {output_dir} ({train_filename}, {test_filename})"
+    )
+
+
+def preprocess_data(
+    df: pd.DataFrame, window_size: int
+) -> Tuple[pd.DataFrame, pd.DataFrame, List[str]]:
+    """
+    Separates features and targets with specific window size feature engineering.
+    Implements Global Truncation (MAX_WINDOW_SIZE = 20).
+    """
+    MAX_WINDOW_SIZE = 20
+
+    feature_prefixes = (
+        "Vout_ss",
+        "mout_mtq",
+        "out_gps",
+        "wout_gyro",
+        "point_error",
+        "Bout_magn",
+    )
+    raw_feature_cols = [
+        c for c in df.columns if any(c.startswith(p) for p in feature_prefixes)
+    ]
+    target_cols = [c for c in df.columns if c.startswith("fault_")]
+
+    if not raw_feature_cols:
         logger.error("No feature columns found based on prefixes.")
         sys.exit(1)
     if not target_cols:
         logger.error("No target columns found starting with 'fault_'.")
         sys.exit(1)
 
-    X = df[feature_cols]
-    y = df[target_cols]
-    
-    logger.info(f"Features: {len(feature_cols)}, Targets: {len(target_cols)}")
+    # Feature Engineering
+    features_list = []
+
+    # Always include raw features (t)
+    features_list.append(df[raw_feature_cols])
+
+    # Delta features (First order difference: t - (t-1))
+    delta_df = df[raw_feature_cols].diff().fillna(0)
+    delta_df.columns = [f"{c}_delta" for c in raw_feature_cols]
+    features_list.append(delta_df)
+
+    if window_size > 1:
+        # Rolling Variance
+        var_df = df[raw_feature_cols].rolling(window=window_size).var()
+        var_df.columns = [f"{c}_var_{window_size}" for c in raw_feature_cols]
+        features_list.append(var_df)
+
+        # Rolling Mean
+        mean_df = df[raw_feature_cols].rolling(window=window_size).mean()
+        mean_df.columns = [f"{c}_mean_{window_size}" for c in raw_feature_cols]
+        features_list.append(mean_df)
+
+    # Concatenate all features
+    X_full = pd.concat(features_list, axis=1)
+
+    # Combine with targets
+    data_combined = pd.concat([X_full, df[target_cols]], axis=1)
+
+    # Global Truncation: Always drop the first MAX_WINDOW_SIZE rows
+    # This ensures consistency across different window_sizes (1, 5, 15, ..., 20)
+    logger.info(f"Applying Global Truncation: Dropping first {MAX_WINDOW_SIZE} rows.")
+    data_combined = data_combined.iloc[MAX_WINDOW_SIZE:].reset_index(drop=True)
+
+    # NOTE: If we used rolling(window=window_size), we would have NaNs at the start.
+    # Since MAX_WINDOW_SIZE >= window_size (assumed max window used in experiments is 20),
+    # dropping the first 20 rows also takes care of dropping the NaNs generated by any window <= 20.
+    # However, to be safe against NaNs if they persist (though they shouldn't if window_size <= 20),
+    # we can do a secondary check or fillna, but dropping is safer for training.
+
+    before_drop = len(data_combined)
+    data_combined = data_combined.dropna()
+    after_drop = len(data_combined)
+
+    if before_drop != after_drop:
+        logger.info(f"Dropped {before_drop - after_drop} additional rows due to NaNs.")
+
+    X = data_combined.iloc[:, : X_full.shape[1]]
+    y = data_combined.iloc[:, X_full.shape[1] :]
+
+    logger.info(f"Features: {X.shape[1]}, Targets: {y.shape[1]}")
     return X, y, target_cols
 
+
 def get_objective(X: pd.DataFrame, y: pd.DataFrame, n_splits: int):
-    """Returns the Optuna objective function with Time Series CV."""
-    
+    """
+    Returns the Optuna objective function with Time Series CV.
+    """
+
     def objective(trial: optuna.Trial) -> float:
         # Search Space
-        max_depth = trial.suggest_int('max_depth', 3, 20)
-        min_samples_split = trial.suggest_int('min_samples_split', 2, 50)
-        min_samples_leaf = trial.suggest_int('min_samples_leaf', 1, 20)
-        criterion = trial.suggest_categorical('criterion', ['gini', 'entropy'])
-        class_weight = trial.suggest_categorical('class_weight', [None, 'balanced'])
+        max_depth = trial.suggest_int("max_depth", 3, 20)
+        min_samples_split = trial.suggest_int("min_samples_split", 2, 50)
+        min_samples_leaf = trial.suggest_int("min_samples_leaf", 1, 20)
+        criterion = trial.suggest_categorical("criterion", ["gini", "entropy"])
+        class_weight = trial.suggest_categorical("class_weight", [None, "balanced"])
 
         clf = DecisionTreeClassifier(
             max_depth=max_depth,
@@ -84,35 +209,50 @@ def get_objective(X: pd.DataFrame, y: pd.DataFrame, n_splits: int):
             min_samples_leaf=min_samples_leaf,
             criterion=criterion,
             class_weight=class_weight,
-            random_state=42
+            random_state=42,
         )
 
         # Time Series Cross-Validation
         tscv = TimeSeriesSplit(n_splits=n_splits)
-        
-        # We optimize for F1 Macro
-        scorer = make_scorer(f1_score, average='macro', zero_division=0)
-        
+
+        # Optimize for F1 Macro
+        scorer = make_scorer(f1_score, average="macro", zero_division=0)
+
         scores = cross_validate(clf, X, y, cv=tscv, scoring=scorer, n_jobs=-1)
-        mean_score = scores['test_score'].mean()
-        
+        mean_score = scores["test_score"].mean()
+
         return mean_score
 
     return objective
 
-def evaluate_model(clf: DecisionTreeClassifier, X_test: pd.DataFrame, y_test: pd.DataFrame, target_cols: List[str]) -> Tuple[float, float, float, str]:
-    """Evaluates the model on the test set."""
+
+def evaluate_model(
+    clf: DecisionTreeClassifier,
+    X_test: pd.DataFrame,
+    y_test: pd.DataFrame,
+    target_cols: List[str],
+) -> Tuple[float, float, float, str]:
+    """
+    Evaluates the model on the test set.
+    """
     y_pred = clf.predict(X_test)
-    
+
     subset_acc = accuracy_score(y_test, y_pred)
     hamming = hamming_loss(y_test, y_pred)
-    f1_macro = f1_score(y_test, y_pred, average='macro', zero_division=0)
-    report = classification_report(y_test, y_pred, target_names=target_cols, zero_division=0)
-    
+    f1_macro = f1_score(y_test, y_pred, average="macro", zero_division=0)
+    report = classification_report(
+        y_test, y_pred, target_names=target_cols, zero_division=0
+    )
+
     return subset_acc, hamming, f1_macro, report
 
-def save_artifacts(model: DecisionTreeClassifier, metrics: dict, model_path: str, metrics_path: str):
-    """Saves the model and metrics to disk."""
+
+def save_artifacts(
+    model: DecisionTreeClassifier, metrics: dict, model_path: str, metrics_path: str
+):
+    """
+    Saves the model and metrics to disk.
+    """
     model_dir = os.path.dirname(model_path)
     if not os.path.exists(model_dir):
         os.makedirs(model_dir)
@@ -121,27 +261,34 @@ def save_artifacts(model: DecisionTreeClassifier, metrics: dict, model_path: str
     joblib.dump(model, model_path)
     logger.info(f"Model saved to {model_path}")
 
-    with open(metrics_path, 'w') as f:
+    with open(metrics_path, "w") as f:
         for key, value in metrics.items():
             f.write(f"{key}: {value}\n")
             if key == "Classification Report":
                 f.write("\n")
-        
+
     logger.info(f"Metrics saved to {metrics_path}")
+
 
 def main():
     args = parse_arguments()
-    
+
+    # Determine filenames based on window_size if not provided
+    if args.model_filename is None:
+        args.model_filename = f"decision_tree_model_w{args.window_size}.pkl"
+    if args.metrics_filename is None:
+        args.metrics_filename = f"decision_tree_metrics_w{args.window_size}.txt"
+
     # Paths
     model_path = os.path.join(args.model_dir, args.model_filename)
     metrics_path = os.path.join(args.model_dir, args.metrics_filename)
 
     # Load and Preprocess
     df = load_data(args.data_path)
-    X, y, target_cols = preprocess_data(df)
+    X, y, target_cols = preprocess_data(df, args.window_size)
 
     logger.info("Splitting data (Shuffle=False for Time Series)...")
-    
+
     # Method: 80% Train/Val (for CV), 20% Test (Holdout)
     split_idx = int(len(X) * 0.8)
     X_train_full, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
@@ -150,8 +297,19 @@ def main():
     logger.info(f"Train+Val size: {len(X_train_full)}")
     logger.info(f"Test size:      {len(X_test)}")
 
-    logger.info(f"Starting Optuna Optimization ({args.n_trials} trials, {args.n_splits}-split TSCV)...")
-    study = optuna.create_study(direction='maximize')
+    save_data_subsets(
+        X_train_full,
+        X_test,
+        y_train_full,
+        y_test,
+        "data/processed/splits",
+        args.window_size,
+    )
+
+    logger.info(
+        f"Starting Optuna Optimization ({args.n_trials} trials, {args.n_splits}-split TSCV)..."
+    )
+    study = optuna.create_study(direction="maximize")
     objective = get_objective(X_train_full, y_train_full, args.n_splits)
     study.optimize(objective, n_trials=args.n_trials)
 
@@ -162,32 +320,36 @@ def main():
     # Retrain best model on all available training data (Train + Val)
     logger.info("Retraining best model on full training set...")
     best_params = study.best_trial.params
-    
+
     # Handle None for categorical
-    if best_params.get('class_weight') == 'None':
-         best_params['class_weight'] = None
+    if best_params.get("class_weight") == "None":
+        best_params["class_weight"] = None
 
     best_clf = DecisionTreeClassifier(random_state=42, **best_params)
     best_clf.fit(X_train_full, y_train_full)
 
     # Evaluate on final holdout Test set
     logger.info("Evaluating on Holdout Test Set...")
-    subset_acc, hamming, f1_macro, report = evaluate_model(best_clf, X_test, y_test, target_cols)
+    subset_acc, hamming, f1_macro, report = evaluate_model(
+        best_clf, X_test, y_test, target_cols
+    )
 
     logger.info(f"Test Subset Accuracy: {subset_acc:.4f}")
     logger.info(f"Test Hamming Loss:    {hamming:.4f}")
     logger.info(f"Test F1 Macro:        {f1_macro:.4f}")
-    
+
     metrics = {
+        "Window Size": args.window_size,
         "Best Params": best_params,
         "Best CV Score": study.best_value,
         "Test Subset Accuracy": f"{subset_acc:.4f}",
         "Test Hamming Loss": f"{hamming:.4f}",
         "Test F1 Macro": f"{f1_macro:.4f}",
-        "Classification Report": report
+        "Classification Report": report,
     }
 
     save_artifacts(best_clf, metrics, model_path, metrics_path)
+
 
 if __name__ == "__main__":
     main()
