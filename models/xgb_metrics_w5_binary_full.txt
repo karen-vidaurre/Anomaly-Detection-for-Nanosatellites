@@ -1,0 +1,13 @@
+Feature Set: full
+Weight Strategy: none
+Best Params: {'n_estimators': 364, 'max_depth': 9, 'learning_rate': 0.07593239588745183, 'subsample': 0.5099489388427358, 'colsample_bytree': 0.5495577866269765, 'min_child_weight': 9, 'gamma': 2.387760226790501, 'n_jobs': -1, 'random_state': 42, 'tree_method': 'hist', 'objective': 'binary:logistic', 'eval_metric': 'logloss', 'scale_pos_weight': 1.0}
+Test F1 Score: 0.6707
+
+              precision    recall  f1-score   support
+
+      Normal       0.83      0.93      0.87     40953
+       Fault       0.79      0.58      0.67     19040
+
+    accuracy                           0.82     59993
+   macro avg       0.81      0.76      0.77     59993
+weighted avg       0.81      0.82      0.81     59993

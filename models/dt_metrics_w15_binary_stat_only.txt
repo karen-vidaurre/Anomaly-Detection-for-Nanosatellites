@@ -1,0 +1,13 @@
+Feature Set: stat_only
+Best Params: {'max_depth': 19, 'min_samples_split': 53, 'min_samples_leaf': 23, 'criterion': 'gini', 'class_weight': 'balanced'}
+Test F1: 0.5581689695179833
+Test Accuracy: 0.7206541853525166
+
+              precision    recall  f1-score   support
+
+      Normal       0.79      0.80      0.80     40953
+       Fault       0.56      0.56      0.56     19030
+
+    accuracy                           0.72     59983
+   macro avg       0.68      0.68      0.68     59983
+weighted avg       0.72      0.72      0.72     59983
