@@ -3,21 +3,22 @@ import logging
 import os
 import sys
 import gc
-from typing import Tuple, List, Dict, Optional, Any
+from typing import Tuple, List, Dict, Optional, Any, Callable
 
 import joblib
 import numpy as np
 import optuna
 import pandas as pd
-from sklearn.model_selection import TimeSeriesSplit, cross_validate
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.metrics import (
     f1_score,
     accuracy_score,
     hamming_loss,
     classification_report,
-    make_scorer,
+    fbeta_score,
+    recall_score,
 )
+from sklearn.preprocessing import StandardScaler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,15 +29,12 @@ logger = logging.getLogger(__name__)
 
 
 def parse_arguments() -> argparse.Namespace:
-    """Parses command line arguments."""
-    parser = argparse.ArgumentParser(
-        description="Train a Decision Tree model (Binary or Multi-label) with Optuna."
-    )
+    parser = argparse.ArgumentParser(description="Train a Decision Tree model.")
     parser.add_argument(
-        "--data_path",
+        "--data_dir",
         type=str,
-        default="resources/raw/sim_001_full_overlaps.csv",
-        help="Path to the input CSV data.",
+        default="data/processed/tabular",  # Updated default to match your new structure
+        help="Root directory where processed datasets are stored.",
     )
     parser.add_argument(
         "--model_dir",
@@ -63,223 +61,163 @@ def parse_arguments() -> argparse.Namespace:
         "--window_size",
         type=int,
         default=1,
-        help="Window size. 1=Raw, >1=Rolling Variance/Mean.",
-    )
-    parser.add_argument(
-        "--n_splits", type=int, default=5, help="Number of Time Series CV splits."
+        help="Window size to train on.",
     )
     parser.add_argument(
         "--binary_target",
         action="store_true",
-        help="If set, trains a binary classifier (0=Normal, 1=Any Fault) instead of multi-label.",
+        help="If set, uses binary targets (0=Normal, 1=Any Fault).",
+    )
+    parser.add_argument(
+        "--normalize",
+        action="store_true",
+        help="Normalize features using StandardScaler (Optional for Trees).",
+    )
+    parser.add_argument(
+        "--optimize_metric",
+        type=str,
+        default="f1",
+        choices=["f1", "f2", "recall"],
+        help="Metric to optimize.",
+    )
+    # --- NEW ARGUMENT FOR RESEARCH COMPARISON ---
+    parser.add_argument(
+        "--feature_set",
+        type=str,
+        default="full",
+        choices=["full", "stat_only"],
+        help="full: Use all features. stat_only: Drop raw/mean/min/max (emulate statistical model constraints).",
     )
 
     return parser.parse_args()
 
 
-def load_data(data_path: str) -> pd.DataFrame:
-    """Loads data from CSV."""
-    if not os.path.exists(data_path):
-        logger.error(f"Data file not found at {data_path}")
+def load_datasets(
+    data_dir: str, window_size: int, binary_target: bool, feature_set: str
+) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """
+    Loads train/val/test and filters features based on feature_set mode.
+    """
+    mode_str = "binary" if binary_target else "multi"
+    base_path = os.path.join(data_dir, f"w{window_size}", mode_str)
+
+    train_path = os.path.join(base_path, "train.csv")
+    val_path = os.path.join(base_path, "val.csv")
+    test_path = os.path.join(base_path, "test.csv")
+
+    if not os.path.exists(train_path):
+        logger.error(f"Datasets not found in {base_path}")
         sys.exit(1)
 
-    logger.info(f"Loading data from {data_path}...")
-    try:
-        df = pd.read_csv(data_path)
-        df.columns = [c.strip() for c in df.columns]
+    logger.info(f"Loading data from {base_path}...")
+    train_df = pd.read_csv(train_path)
+    val_df = pd.read_csv(val_path)
+    test_df = pd.read_csv(test_path)
 
-        float_cols = df.select_dtypes(include=["float64"]).columns
-        if len(float_cols) > 0:
-            df[float_cols] = df[float_cols].astype("float32")
-
-        return df
-    except Exception as e:
-        logger.error(f"Failed to load data: {e}")
-        sys.exit(1)
-
-
-def save_data_subsets(
-    X_train, X_test, y_train, y_test, output_dir, window_size, is_binary
-):
-    """
-    Saves the train and test subsets to CSV files with proper naming.
-    """
-    os.makedirs(output_dir, exist_ok=True)
-
-    mode_str = "binary" if is_binary else "multi"
-
-    train_full = pd.concat([X_train, y_train], axis=1)
-    test_full = pd.concat([X_test, y_test], axis=1)
-
-    train_filename = f"train_split_w{window_size}_{mode_str}.csv"
-    test_filename = f"test_split_w{window_size}_{mode_str}.csv"
-
-    train_full.to_csv(os.path.join(output_dir, train_filename), index=False)
-    test_full.to_csv(os.path.join(output_dir, test_filename), index=False)
-
-    logger.info(
-        f"Subconjuntos guardados en: {output_dir} ({train_filename}, {test_filename})"
-    )
-
-
-def preprocess_data(
-    df: pd.DataFrame, window_size: int, binary_target: bool
-) -> Tuple[pd.DataFrame, pd.DataFrame, List[str]]:
-    """
-    Separates features and targets. Handles Binary vs Multi-label logic.
-    """
-    MAX_WINDOW_SIZE = 20
-
-    feature_prefixes = (
-        "Vout_ss",
-        "mout_mtq",
-        "out_gps",
-        "wout_gyro",
-        "point_error",
-        "Bout_magn",
-    )
-    raw_feature_cols = [
-        c for c in df.columns if any(c.startswith(p) for p in feature_prefixes)
+    # 1. Identify Targets
+    target_cols = [
+        c for c in train_df.columns if c.startswith("fault_") or c == "any_fault"
     ]
-    target_cols = [c for c in df.columns if c.startswith("fault_")]
 
-    if not raw_feature_cols:
-        logger.error("No feature columns found based on prefixes.")
-        sys.exit(1)
-    if not target_cols:
-        logger.error("No target columns found starting with 'fault_'.")
-        sys.exit(1)
+    # 2. Identify Features
+    all_cols = train_df.columns
+    feature_cols = [c for c in all_cols if c not in target_cols and c != "Time"]
 
-    # --- Feature Engineering ---
-    features_list = []
-    features_list.append(df[raw_feature_cols])
-
-    # Delta
-    delta_df = df[raw_feature_cols].diff().fillna(0).astype("float32")
-    delta_df.columns = [f"{c}_delta" for c in raw_feature_cols]
-    features_list.append(delta_df)
-
-    if window_size > 1:
-        # Rolling Variance
-        var_df = (
-            df[raw_feature_cols].rolling(window=window_size).var().astype("float32")
+    # --- RESEARCH FEATURE SELECTION ---
+    if feature_set == "stat_only":
+        logger.info(
+            "Applying 'stat_only' filter: Dropping Raw, Mean, Min, Max, Median."
         )
-        var_df.columns = [f"{c}_var_{window_size}" for c in raw_feature_cols]
-        features_list.append(var_df)
+        # We only keep columns that contain '_delta', '_var', '_accel'
+        # OR columns that do NOT have the banned suffixes.
 
-        # Rolling Mean
-        mean_df = (
-            df[raw_feature_cols].rolling(window=window_size).mean().astype("float32")
+        # Banned: Raw sensors usually have no suffix, or specific ones like _mean
+        # Strategy: Keep only those with accepted suffixes.
+        accepted_suffixes = ["_delta", "_var", "_accel", "_std"]
+
+        filtered_cols = []
+        for col in feature_cols:
+            if any(s in col for s in accepted_suffixes):
+                filtered_cols.append(col)
+
+        if len(filtered_cols) == 0:
+            logger.error(
+                "Feature set 'stat_only' resulted in 0 features! Check column names."
+            )
+            sys.exit(1)
+
+        feature_cols = filtered_cols
+        logger.info(
+            f"Features reduced from {len(all_cols)-len(target_cols)} to {len(feature_cols)}."
         )
-        mean_df.columns = [f"{c}_mean_{window_size}" for c in raw_feature_cols]
-        features_list.append(mean_df)
 
-    # Concatenate features
-    X_full = pd.concat(features_list, axis=1)
+    # Apply selection
+    X_train = train_df[feature_cols].astype("float32")
+    X_val = val_df[feature_cols].astype("float32")
+    X_test = test_df[feature_cols].astype("float32")
 
-    # Cleanup intermediate frames
-    del features_list, delta_df
-    if window_size > 1:
-        del var_df, mean_df
-    gc.collect()
+    y_train = train_df[target_cols]
+    y_val = val_df[target_cols]
+    y_test = test_df[target_cols]
 
-    # Extract Targets
-    y_raw = df[target_cols]
-
-    if binary_target:
-        logger.info("Transforming targets to BINARY mode (0=Normal, 1=Any Fault).")
-        y_final = y_raw.max(axis=1).to_frame(name="any_fault")
-        final_target_cols = ["any_fault"]
-    else:
-        logger.info("Keeping targets in MULTI-LABEL mode.")
-        y_final = y_raw
-        final_target_cols = target_cols
-
-    # Combine X and y for consistent dropping
-    data_combined = pd.concat([X_full, y_final], axis=1)
-
-    # Cleanup X_full and y_final mostly to free reference, though data_combined holds data
-    del X_full, y_final
-    gc.collect()
-
-    # Global Truncation
-    logger.info(f"Applying Global Truncation: Dropping first {MAX_WINDOW_SIZE} rows.")
-    data_combined = data_combined.iloc[MAX_WINDOW_SIZE:].reset_index(drop=True)
-
-    before_drop = len(data_combined)
-    data_combined = data_combined.dropna()
-    after_drop = len(data_combined)
-
-    if before_drop != after_drop:
-        logger.info(f"Dropped {before_drop - after_drop} additional rows due to NaNs.")
-
-    # Calculate number of feature columns: Total columns - number of target columns
-    num_features = len(data_combined.columns) - len(final_target_cols)
-    X = data_combined.iloc[:, :num_features].astype("float32")
-    y = data_combined.iloc[:, num_features:]
-
-    if binary_target:
-        y = y["any_fault"]
-
-    # Cleanup big combined df
-    del data_combined
-    gc.collect()
-
-    logger.info(f"Features: {X.shape[1]}, Targets shape: {y.shape}")
-    return X, y, final_target_cols
+    return X_train, y_train, X_val, y_val, X_test, y_test, feature_cols
 
 
-def get_objective(X: np.ndarray, y: np.ndarray, n_splits: int, binary_target: bool):
-    """
-    Returns the Optuna objective function with Time Series CV.
-    """
+def get_objective(
+    X_train: np.ndarray,
+    y_train: np.ndarray,
+    X_val: np.ndarray,
+    y_val: np.ndarray,
+    binary_target: bool,
+    optimize_metric: str = "f1",
+) -> Callable:
 
     def objective(trial: optuna.Trial) -> float:
         # Search Space
-        max_depth = trial.suggest_int("max_depth", 3, 20)
-        min_samples_split = trial.suggest_int("min_samples_split", 2, 50)
-        min_samples_leaf = trial.suggest_int("min_samples_leaf", 1, 20)
+        max_depth = trial.suggest_int("max_depth", 3, 30)
+        min_samples_split = trial.suggest_int("min_samples_split", 2, 100)
+        min_samples_leaf = trial.suggest_int("min_samples_leaf", 1, 50)
         criterion = trial.suggest_categorical("criterion", ["gini", "entropy"])
-        class_weight = trial.suggest_categorical("class_weight", [None, "balanced"])
+
+        # IMPROVEMENT: Tune class_weight
+        class_weight_opt = trial.suggest_categorical(
+            "class_weight", ["balanced", "None"]
+        )
+        cw = None if class_weight_opt == "None" else "balanced"
 
         clf = DecisionTreeClassifier(
             max_depth=max_depth,
             min_samples_split=min_samples_split,
             min_samples_leaf=min_samples_leaf,
             criterion=criterion,
-            class_weight=class_weight,
+            class_weight=cw,
             random_state=42,
         )
 
-        tscv = TimeSeriesSplit(n_splits=n_splits)
+        clf.fit(X_train, y_train)
+        y_pred = clf.predict(X_val)
 
         if binary_target:
-            scorer = make_scorer(f1_score, average="binary", zero_division=0)
+            if optimize_metric == "f2":
+                score = fbeta_score(
+                    y_val, y_pred, beta=2, average="binary", zero_division=0
+                )
+            elif optimize_metric == "recall":
+                score = recall_score(y_val, y_pred, average="binary", zero_division=0)
+            else:
+                score = f1_score(y_val, y_pred, average="binary", zero_division=0)
         else:
-            scorer = make_scorer(f1_score, average="macro", zero_division=0)
+            score = f1_score(y_val, y_pred, average="macro", zero_division=0)
 
-        scores = cross_validate(clf, X, y, cv=tscv, scoring=scorer, n_jobs=-1)
-        mean_score = scores["test_score"].mean()
-
-        return mean_score
+        return score
 
     return objective
 
 
-def evaluate_model(
-    clf: DecisionTreeClassifier,
-    X_test: np.ndarray,
-    y_test: np.ndarray,
-    target_cols: List[str],
-    binary_target: bool,
-) -> Tuple[float, float, float, str]:
-    """
-    Evaluates the model on the test set.
-    """
+def evaluate_model(clf, X_test, y_test, target_names, binary_target):
     y_pred = clf.predict(X_test)
 
     subset_acc = accuracy_score(y_test, y_pred)
-
     hamming = hamming_loss(y_test, y_pred)
 
     if binary_target:
@@ -289,134 +227,136 @@ def evaluate_model(
         )
     else:
         f1_metric = f1_score(y_test, y_pred, average="macro", zero_division=0)
+        # Handle case where target_names length mismatches classes in y_test
         report = classification_report(
-            y_test, y_pred, target_names=target_cols, zero_division=0
+            y_test, y_pred, target_names=target_names, zero_division=0
         )
 
     return subset_acc, hamming, f1_metric, report
 
 
-def save_artifacts(
-    model: DecisionTreeClassifier, metrics: dict, model_path: str, metrics_path: str
-):
+def save_feature_importance(model, feature_names, output_path):
     """
-    Saves the model and metrics to disk.
+    Extracts and saves feature importance. Crucial for research analysis.
     """
-    model_dir = os.path.dirname(model_path)
-    if not os.path.exists(model_dir):
-        os.makedirs(model_dir)
-        logger.info(f"Created directory {model_dir}")
+    importances = model.feature_importances_
+    indices = np.argsort(importances)[::-1]
 
-    joblib.dump(model, model_path)
-    logger.info(f"Model saved to {model_path}")
+    with open(output_path, "w") as f:
+        f.write("Rank,Feature,Importance\n")
+        for i in range(len(feature_names)):
+            idx = indices[i]
+            # Only save non-zero features to save space/noise
+            if importances[idx] > 0:
+                f.write(f"{i+1},{feature_names[idx]},{importances[idx]:.6f}\n")
 
-    with open(metrics_path, "w") as f:
-        for key, value in metrics.items():
-            f.write(f"{key}: {value}\n")
-            if key == "Classification Report":
-                f.write("\n")
-
-    logger.info(f"Metrics saved to {metrics_path}")
+    logger.info(f"Feature importance saved to {output_path}")
 
 
 def main():
     args = parse_arguments()
 
+    # Naming convention updates
     mode_suffix = "binary" if args.binary_target else "multi"
-
     if args.model_filename is None:
-        args.model_filename = f"dt_model_w{args.window_size}_{mode_suffix}.pkl"
+        args.model_filename = (
+            f"dt_model_w{args.window_size}_{mode_suffix}_{args.feature_set}.pkl"
+        )
     if args.metrics_filename is None:
-        args.metrics_filename = f"dt_metrics_w{args.window_size}_{mode_suffix}.txt"
+        args.metrics_filename = (
+            f"dt_metrics_w{args.window_size}_{mode_suffix}_{args.feature_set}.txt"
+        )
 
-    # Paths
-    model_path = os.path.join(args.model_dir, args.model_filename)
-    metrics_path = os.path.join(args.model_dir, args.metrics_filename)
-
-    # Load and Preprocess
-    df = load_data(args.data_path)
-    X, y, target_cols = preprocess_data(df, args.window_size, args.binary_target)
-
-    # Cleanup original df
-    del df
-    gc.collect()
-
-    logger.info("Splitting data (Shuffle=False for Time Series)...")
-
-    # Method: 80% Train/Val (for CV), 20% Test (Holdout)
-    split_idx = int(len(X) * 0.8)
-    X_train_full = X.iloc[:split_idx]
-    X_test = X.iloc[split_idx:]
-    y_train_full = y.iloc[:split_idx]
-    y_test = y.iloc[split_idx:]
-
-    logger.info(f"Train+Val size: {len(X_train_full)}")
-    logger.info(f"Test size:      {len(X_test)}")
-
-    save_data_subsets(
-        X_train_full,
-        X_test,
-        y_train_full,
-        y_test,
-        "data/processed/splits",
-        args.window_size,
-        args.binary_target,
+    imp_filename = (
+        f"dt_importance_w{args.window_size}_{mode_suffix}_{args.feature_set}.csv"
     )
 
-    # Convert to NumPy arrays for training (more efficient)
-    logger.info("Converting datasets to NumPy arrays for optimization loop...")
-    X_train_np = X_train_full.to_numpy(dtype=np.float32)
-    y_train_np = y_train_full.to_numpy()  # Keep targets as inferred type (int/float)
-    X_test_np = X_test.to_numpy(dtype=np.float32)
-    y_test_np = y_test.to_numpy()
-
-    # Delete DataFrame versions to free memory
-    del X_train_full, X_test, y_train_full, y_test, X, y
-    gc.collect()
-
-    logger.info(
-        f"Starting Optuna Optimization ({args.n_trials} trials, {args.n_splits}-split TSCV)..."
+    # Load Data (Pandas)
+    X_train_df, y_train_df, X_val_df, y_val_df, X_test_df, y_test_df, feature_names = (
+        load_datasets(
+            args.data_dir, args.window_size, args.binary_target, args.feature_set
+        )
     )
+
+    # Get target names
+    if args.binary_target:
+        target_names = ["Normal", "Fault"]
+    else:
+        target_names = list(y_train_df.columns)
+
+    # Convert to Numpy for Sklearn
+    X_train = X_train_df.to_numpy()
+    y_train = y_train_df.to_numpy()
+    X_val = X_val_df.to_numpy()
+    y_val = y_val_df.to_numpy()
+    X_test = X_test_df.to_numpy()
+    y_test = y_test_df.to_numpy()
+
+    # Flatten y if binary
+    if args.binary_target:
+        y_train = y_train.ravel()
+        y_val = y_val.ravel()
+        y_test = y_test.ravel()
+
+    # Normalize (Optional)
+    if args.normalize:
+        scaler = StandardScaler()
+        X_train = scaler.fit_transform(X_train)
+        X_val = scaler.transform(X_val)
+        X_test = scaler.transform(X_test)
+
+    # Optuna
+    logger.info(f"Starting Optuna ({args.n_trials} trials)... Mode: {args.feature_set}")
     study = optuna.create_study(direction="maximize")
-    objective = get_objective(X_train_np, y_train_np, args.n_splits, args.binary_target)
+    objective = get_objective(
+        X_train, y_train, X_val, y_val, args.binary_target, args.optimize_metric
+    )
     study.optimize(objective, n_trials=args.n_trials)
 
-    logger.info("\nBest Trial:")
-    logger.info(study.best_trial.params)
-    logger.info(f"Best CV Score: {study.best_value:.4f}")
+    logger.info(f"Best Params: {study.best_trial.params}")
 
-    # Retrain best model on all available training data (Train + Val)
-    logger.info("Retraining best model on full training set...")
+    # Retrain on Train + Val
+    X_full = np.concatenate([X_train, X_val], axis=0)
+    y_full = np.concatenate([y_train, y_val], axis=0)
+
     best_params = study.best_trial.params
-
-    if best_params.get("class_weight") == "None":
-        best_params["class_weight"] = None
+    # Handle string conversion for class_weight
+    if "class_weight" in best_params:
+        if best_params["class_weight"] == "None":
+            best_params["class_weight"] = None
+        else:
+            best_params["class_weight"] = "balanced"
 
     best_clf = DecisionTreeClassifier(random_state=42, **best_params)
-    best_clf.fit(X_train_np, y_train_np)
+    best_clf.fit(X_full, y_full)
 
-    # Evaluate on final holdout Test set
-    logger.info("Evaluating on Holdout Test Set...")
-    subset_acc, hamming, f1_metric, report = evaluate_model(
-        best_clf, X_test_np, y_test_np, target_cols, args.binary_target
+    # Evaluate
+    acc, hamm, f1, report = evaluate_model(
+        best_clf, X_test, y_test, target_names, args.binary_target
     )
 
-    logger.info(f"Test Subset Accuracy: {subset_acc:.4f}")
-    logger.info(f"Test Hamming Loss:    {hamming:.4f}")
-    logger.info(f"Test F1 Score:        {f1_metric:.4f}")
+    logger.info(f"Test F1: {f1:.4f}")
 
-    metrics = {
-        "Mode": "Binary" if args.binary_target else "Multi-label",
-        "Window Size": args.window_size,
-        "Best Params": best_params,
-        "Best CV Score": study.best_value,
-        "Test Subset Accuracy": f"{subset_acc:.4f}",
-        "Test Hamming Loss": f"{hamming:.4f}",
-        "Test F1 Score": f"{f1_metric:.4f}",
-        "Classification Report": report,
-    }
+    # Save
+    model_path = os.path.join(args.model_dir, args.model_filename)
+    metrics_path = os.path.join(args.model_dir, args.metrics_filename)
+    imp_path = os.path.join(args.model_dir, imp_filename)
 
-    save_artifacts(best_clf, metrics, model_path, metrics_path)
+    # Save Model
+    if not os.path.exists(args.model_dir):
+        os.makedirs(args.model_dir)
+    joblib.dump(best_clf, model_path)
+
+    # Save Metrics
+    with open(metrics_path, "w") as f:
+        f.write(f"Feature Set: {args.feature_set}\n")
+        f.write(f"Best Params: {best_params}\n")
+        f.write(f"Test F1: {f1}\n")
+        f.write(f"Test Accuracy: {acc}\n\n")
+        f.write(report)
+
+    # Save Feature Importance (Research Requirement)
+    save_feature_importance(best_clf, feature_names, imp_path)
 
 
 if __name__ == "__main__":
