@@ -8,7 +8,6 @@ from typing import List, Tuple
 import pandas as pd
 import numpy as np
 
-# Configure Logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -30,7 +29,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="data/processed",
+        default="data/processed/tabular",
         help="Base directory to save processed datasets.",
     )
     parser.add_argument(
@@ -77,14 +76,59 @@ def load_data(data_path: str) -> pd.DataFrame:
         sys.exit(1)
 
 
+def validate_time_continuity(
+    df: pd.DataFrame, time_col: str = "Time", expected_freq: float = 0.1
+) -> None:
+    """
+    Ensures data doesn't have time gaps. Gaps corrupt rolling window calculations
+    because rolling() assumes adjacent rows are adjacent in time.
+
+    Args:
+        df (pd.DataFrame): Dataframe containing a time column.
+        time_col (str): Name of the time column.
+        expected_freq (float): Expected sampling rate in seconds.
+    """
+    if time_col not in df.columns:
+        logger.warning(
+            f"Time column '{time_col}' not found. Skipping continuity check."
+        )
+        return
+
+    logger.info("Running Time Continuity Sanity Check...")
+
+    # Calculate time difference between rows
+    # We fillna with expected_freq because the first row has no previous row
+    dt = df[time_col].diff().fillna(expected_freq)
+
+    # Check for gaps (allowing for tiny floating point errors, e.g., 1e-4)
+    # If gap is significantly larger than expected (e.g. > 1.5x), it is a break.
+    gaps = df[np.abs(dt) > (expected_freq * 1.5)]
+
+    if len(gaps) > 0:
+        logger.error(
+            f"FATAL METHODOLOGY ERROR: Found {len(gaps)} time gaps in the data."
+        )
+        logger.error(
+            f"Example gap at index {gaps.index[0]}: Delta was {dt.loc[gaps.index[0]]}"
+        )
+        logger.error(
+            "Rolling window features will be mathematically incorrect across these gaps."
+        )
+        logger.error(
+            "Please fix the raw CSV (fill gaps) or split processing by segment."
+        )
+        sys.exit(1)  # Fail fast to protect research integrity
+    else:
+        logger.info("Sanity Check Passed: Time continuity is valid.")
+
+
 def generate_features(
     df: pd.DataFrame, window_size: int, binary_target: bool
 ) -> pd.DataFrame:
     """
     Applies feature engineering:
     - Delta
-    - Rolling Mean
-    - Rolling Var
+    - Rolling Mean / Var / Min / Max / Median
 
     Applies global truncation and returns computed dataframe with targets.
 
@@ -97,6 +141,9 @@ def generate_features(
         pd.DataFrame: Computed dataframe with features and targets.
     """
     MAX_WINDOW_SIZE = 20
+
+    # Sanity Check
+    validate_time_continuity(df)
 
     # Base dataset feature column names prefixes
     feature_prefixes = (
@@ -122,7 +169,7 @@ def generate_features(
     # --- Feature Engineering ---
     features_list = []
 
-    # Keeps Time if present
+    # Keeps Time if present (Useful for visualization later)
     if "Time" in df.columns:
         features_list.append(df[["Time"]])
 
@@ -148,12 +195,33 @@ def generate_features(
         mean_df.columns = [f"{c}_mean_{window_size}" for c in raw_feature_cols]
         features_list.append(mean_df)
 
+        # Rolling Min
+        min_df = (
+            df[raw_feature_cols].rolling(window=window_size).min().astype("float32")
+        )
+        min_df.columns = [f"{c}_min_{window_size}" for c in raw_feature_cols]
+        features_list.append(min_df)
+
+        # Rolling Max
+        max_df = (
+            df[raw_feature_cols].rolling(window=window_size).max().astype("float32")
+        )
+        max_df.columns = [f"{c}_max_{window_size}" for c in raw_feature_cols]
+        features_list.append(max_df)
+
+        # Rolling Median
+        median_df = (
+            df[raw_feature_cols].rolling(window=window_size).median().astype("float32")
+        )
+        median_df.columns = [f"{c}_median_{window_size}" for c in raw_feature_cols]
+        features_list.append(median_df)
+
     X_full = pd.concat(features_list, axis=1)
 
     # Cleanup
     del features_list, delta_df
     if window_size > 1:
-        del var_df, mean_df
+        del var_df, mean_df, min_df, max_df, median_df
     gc.collect()
 
     # Targets
