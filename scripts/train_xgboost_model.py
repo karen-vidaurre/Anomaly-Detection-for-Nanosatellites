@@ -1,8 +1,13 @@
+"""
+Train XGBoost model with Optuna tuning.
+"""
+
 import argparse
 import logging
 import os
 import sys
-from typing import Callable, Tuple, List
+import time
+from typing import Callable, Tuple
 import joblib
 
 import numpy as np
@@ -29,6 +34,9 @@ logger = logging.getLogger(__name__)
 
 
 def parse_arguments() -> argparse.Namespace:
+    """
+    Parse command-line arguments.
+    """
     parser = argparse.ArgumentParser(
         description="Train XGBoost model with Optuna tuning."
     )
@@ -68,13 +76,12 @@ def parse_arguments() -> argparse.Namespace:
         choices=["f1", "f2", "recall"],
         help="Metric to optimize (f1, f2, recall).",
     )
-    # --- RESEARCH IMPROVEMENT: Feature Set Selection ---
     parser.add_argument(
         "--feature_set",
         type=str,
         default="full",
         choices=["full", "stat_only"],
-        help="full: Use all features. stat_only: Drop raw/mean/min/max (emulate statistical model constraints).",
+        help="full: Use all features. stat_only: Drop raw/mean/min/max.",
     )
     return parser.parse_args()
 
@@ -93,24 +100,24 @@ def load_datasets(
     test_path = os.path.join(base_path, "test.csv")
 
     if not os.path.exists(train_path):
-        logger.error(f"Datasets not found in {base_path}.")
+        logger.error("Datasets not found in %s", base_path)
         sys.exit(1)
 
-    logger.info(f"Loading training data from {train_path}...")
+    logger.info("Loading training data from %s...", train_path)
     train_df = pd.read_csv(train_path)
     val_df = pd.read_csv(val_path)
     test_df = pd.read_csv(test_path)
 
-    # 1. Identify Targets
+    # Identify Targets
     target_cols = [
         c for c in train_df.columns if c.startswith("fault_") or c == "any_fault"
     ]
 
-    # 2. Identify Features
+    # Identify Features
     all_cols = train_df.columns
     feature_cols = [c for c in all_cols if c not in target_cols and c != "Time"]
 
-    # --- RESEARCH IMPROVEMENT: Filter Features ---
+    # Filter Features
     if feature_set == "stat_only":
         logger.info(
             "Applying 'stat_only' filter: Dropping Raw, Mean, Min, Max, Median."
@@ -125,10 +132,10 @@ def load_datasets(
             logger.error("Feature set 'stat_only' resulted in 0 features!")
             sys.exit(1)
         feature_cols = filtered_cols
-        logger.info(f"Features reduced to {len(feature_cols)}.")
+        logger.info("Features reduced to %s.", len(feature_cols))
 
     # Apply Selection and Cast
-    train_df = train_df[feature_cols + target_cols]  # Keep targets for splitting later
+    train_df = train_df[feature_cols + target_cols]
     val_df = val_df[feature_cols + target_cols]
     test_df = test_df[feature_cols + target_cols]
 
@@ -141,30 +148,32 @@ def load_datasets(
 
 
 def get_objective(
-    X_train: np.ndarray,
+    x_train: np.ndarray,
     y_train: np.ndarray,
-    X_val: np.ndarray,
+    x_val: np.ndarray,
     y_val: np.ndarray,
     binary_target: bool,
     scale_pos_weight: float,
     optimize_metric: str = "f1",
 ) -> Callable:
+    """
+    Returns the objective function for Optuna hyperparameter optimization.
+    """
 
     def objective(trial: optuna.Trial) -> float:
-        # --- RESEARCH IMPROVEMENT: Tune Class Weighting Strategy ---
-        # "balanced": Use calculated scale_pos_weight
-        # "none": Use default (1.0)
+        # --- TUNE WEIGHTING STRATEGY ---
         weight_strategy = trial.suggest_categorical(
             "weight_strategy", ["balanced", "none"]
         )
-
         current_scale_weight = (
             scale_pos_weight if weight_strategy == "balanced" else 1.0
         )
 
         params = {
+            "max_depth": trial.suggest_int("max_depth", 3, 10),
             "n_estimators": trial.suggest_int("n_estimators", 50, 500),
-            "max_depth": trial.suggest_int("max_depth", 3, 15),
+            "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 10.0, log=True),
+            "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 10.0, log=True),
             "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
             "subsample": trial.suggest_float("subsample", 0.5, 1.0),
             "colsample_bytree": trial.suggest_float("colsample_bytree", 0.5, 1.0),
@@ -173,6 +182,9 @@ def get_objective(
             "n_jobs": -1,
             "random_state": 42,
             "tree_method": "hist",
+            "grow_policy": trial.suggest_categorical(
+                "grow_policy", ["depthwise", "lossguide"]
+            ),
         }
 
         if binary_target:
@@ -182,13 +194,15 @@ def get_objective(
         else:
             params["objective"] = "multi:softprob"
             params["eval_metric"] = "mlogloss"
-            # Scale pos weight not directly supported in multi:softprob via this API param
-            # ignoring for multi-class for now
 
         clf = XGBClassifier(**params)
-        clf.fit(X_train, y_train, verbose=False)
-        y_pred = clf.predict(X_val)
 
+        # Fit the model
+        clf.fit(x_train, y_train, verbose=False)
+        # Evaluate the model
+        y_pred = clf.predict(x_val)
+
+        # Calculate the score
         if binary_target:
             if optimize_metric == "f2":
                 score = fbeta_score(
@@ -213,17 +227,48 @@ def save_feature_importance(model, feature_names, output_path):
     importances = model.feature_importances_
     indices = np.argsort(importances)[::-1]
 
-    with open(output_path, "w") as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         f.write("Rank,Feature,Importance\n")
         for i in range(len(feature_names)):
             idx = indices[i]
             if importances[idx] > 0:
                 f.write(f"{i+1},{feature_names[idx]},{importances[idx]:.6f}\n")
 
-    logger.info(f"Feature importance saved to {output_path}")
+    logger.info("Feature importance saved to %s", output_path)
+
+
+def get_system_metrics(model, x_test, model_path):
+    """
+    Calculates Model Size (Storage) and Inference Latency (Speed).
+    Useful for embedded feasibility analysis.
+    """
+    # Model Size
+    if not os.path.exists(model_path):
+        return 0.0, 0.0
+
+    size_bytes = os.path.getsize(model_path)
+    size_kb = size_bytes / 1024
+
+    # Inference Time
+    # Warm-up run (to load into cache)
+    _ = model.predict(x_test[:100])
+
+    # Timing run
+    start_time = time.perf_counter()
+    _ = model.predict(x_test)
+    end_time = time.perf_counter()
+
+    total_time = end_time - start_time
+    # Average time per single sample in microseconds
+    latency_us = (total_time / len(x_test)) * 1e6
+
+    return size_kb, latency_us
 
 
 def main():
+    """
+    Main function to train the XGBoost model.
+    """
     args = parse_arguments()
 
     mode_str = "binary" if args.binary_target else "multi"
@@ -254,13 +299,13 @@ def main():
     )
 
     # Prepare NumPy arrays
-    X_train = train_df[feature_cols].to_numpy()
+    x_train = train_df[feature_cols].to_numpy()
     y_train = train_df[target_cols].to_numpy()
 
-    X_val = val_df[feature_cols].to_numpy()
+    x_val = val_df[feature_cols].to_numpy()
     y_val = val_df[target_cols].to_numpy()
 
-    X_test = test_df[feature_cols].to_numpy()
+    x_test = test_df[feature_cols].to_numpy()
     y_test = test_df[target_cols].to_numpy()
 
     if args.binary_target:
@@ -272,9 +317,9 @@ def main():
     if args.normalize:
         logger.info("Normalizing features using StandardScaler...")
         scaler = StandardScaler()
-        X_train = scaler.fit_transform(X_train)
-        X_val = scaler.transform(X_val)
-        X_test = scaler.transform(X_test)
+        x_train = scaler.fit_transform(x_train)
+        x_val = scaler.transform(x_val)
+        x_test = scaler.transform(x_test)
 
     # Calculate scale_pos_weight base
     base_scale_pos_weight = 1.0
@@ -282,16 +327,18 @@ def main():
         num_neg = np.sum(y_train == 0)
         num_pos = np.sum(y_train == 1)
         base_scale_pos_weight = num_neg / num_pos if num_pos > 0 else 1.0
-        logger.info(f"Base Imbalance Ratio: {base_scale_pos_weight:.2f}")
+        logger.info("Base Imbalance Ratio: %.2f", base_scale_pos_weight)
 
     logger.info(
-        f"Starting Optuna Optimization ({args.n_trials} trials)... Mode: {args.feature_set}"
+        "Starting Optuna Optimization (%d trials)... Mode: %s",
+        args.n_trials,
+        args.feature_set,
     )
 
     objective = get_objective(
-        X_train,
+        x_train,
         y_train,
-        X_val,
+        x_val,
         y_val,
         args.binary_target,
         base_scale_pos_weight,
@@ -300,7 +347,7 @@ def main():
     study = optuna.create_study(direction="maximize")
     study.optimize(objective, n_trials=args.n_trials)
 
-    logger.info(f"Best Params: {study.best_params}")
+    logger.info("Best Params: %s", study.best_params)
 
     # Retrain best model
     best_params = study.best_params
@@ -323,13 +370,13 @@ def main():
 
     clf = XGBClassifier(**best_params)
 
-    X_train_full = np.vstack([X_train, X_val])
+    x_train_full = np.vstack([x_train, x_val])
     y_train_full = np.concatenate([y_train, y_val])
 
-    clf.fit(X_train_full, y_train_full, verbose=False)
+    clf.fit(x_train_full, y_train_full, verbose=False)
 
     # Evaluate
-    y_pred = clf.predict(X_test)
+    y_pred = clf.predict(x_test)
 
     accuracy = accuracy_score(y_test, y_pred)
     hamming = hamming_loss(y_test, y_pred)
@@ -344,19 +391,28 @@ def main():
         y_test, y_pred, target_names=target_names, zero_division=0
     )
 
-    logger.info(f"Test F1: {f1:.4f}")
+    logger.info("Test F1: %.4f", f1)
 
     # Save Artifacts
     joblib.dump(clf, model_path)
+    logger.info("Model saved to %s", model_path)
 
-    with open(metrics_path, "w") as f:
+    # Calculate System Metrics
+    size_kb, latency_us = get_system_metrics(clf, x_test, model_path)
+    logger.info("Model Size: %.2f KB", size_kb)
+    logger.info("Inference Time: %.2f µs/sample", latency_us)
+
+    with open(metrics_path, "w", encoding="utf-8") as f:
         f.write(f"Feature Set: {args.feature_set}\n")
         f.write(f"Weight Strategy: {weight_strategy}\n")
         f.write(f"Best Params: {best_params}\n")
-        f.write(f"Test F1 Score: {f1:.4f}\n\n")
-        f.write(report)
+        f.write(f"Test F1 Score: {f1:.4f}\n")
+        f.write(f"Test Accuracy: {accuracy:.4f}\n")
+        f.write(f"Test Hamming Loss: {hamming:.4f}\n")
+        f.write(f"Model Size (KB): {size_kb:.4f}\n")
+        f.write(f"Inference Time (us/sample): {latency_us:.4f}\n")
+        f.write(f"\nClassification Report:\n{report}\n")
 
-    # Save Feature Importance
     save_feature_importance(clf, feature_cols, imp_path)
 
     logger.info("Done.")
