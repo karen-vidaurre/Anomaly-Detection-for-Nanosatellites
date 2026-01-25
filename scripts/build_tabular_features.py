@@ -23,7 +23,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--data_path",
         type=str,
-        default="data/raw/sim_001_full_overlaps.csv",
+        default="data/raw/sim_balanced_dataset.csv",
         help="Path to raw CSV.",
     )
     parser.add_argument(
