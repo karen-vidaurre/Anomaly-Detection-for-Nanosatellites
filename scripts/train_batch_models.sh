@@ -14,8 +14,8 @@ for w in "${WINDOWS[@]}"; do
         --window_size $w \
         --binary_target \
         --n_trials 30 \
-        --model_filename "rf_tiny_refined_w${w}_binary.pkl" \
-        --metrics_filename "rf_tiny_refined_metrics_w${w}_binary.txt"
+        --feature_set full \
+        --optimize_metric f1
 
     # 2. XGBoost (Embedded)
     echo ">> Training XGBoost (Embedded)..."
@@ -23,8 +23,8 @@ for w in "${WINDOWS[@]}"; do
         --window_size $w \
         --binary_target \
         --n_trials 30 \
-        --model_filename "xgb_embedded_w${w}_binary.pkl" \
-        --metrics_filename "xgb_embedded_metrics_w${w}_binary.txt"
+        --feature_set full \
+        --optimize_metric f1
 
     # 3. Decision Tree (Optimized)
     echo ">> Training Decision Tree (Optimized)..."
@@ -32,8 +32,13 @@ for w in "${WINDOWS[@]}"; do
         --window_size $w \
         --binary_target \
         --n_trials 30 \
-        --model_filename "dt_optimized_w${w}_binary.pkl" \
-        --metrics_filename "dt_optimized_metrics_w${w}_binary.txt"
+        --feature_set full \
+        --optimize_metric f1
         
+    # Validation & Cleanup
+    echo ">> Syncing filesystem and cooling down..."
+    sync
+    sleep 5
+    
     echo "Finished Window Size: $w"
 done
