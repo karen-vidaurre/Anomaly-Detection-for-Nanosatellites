@@ -180,7 +180,7 @@ def get_objective(
 
     def objective(trial: optuna.Trial) -> float:
         # Search Space
-        max_depth = trial.suggest_int("max_depth", 5, 20)
+        max_depth = trial.suggest_int("max_depth", 5, 15)
         min_samples_split = trial.suggest_int("min_samples_split", 10, 200)
         min_samples_leaf = trial.suggest_int("min_samples_leaf", 5, 100)
         criterion = trial.suggest_categorical("criterion", ["gini", "entropy"])

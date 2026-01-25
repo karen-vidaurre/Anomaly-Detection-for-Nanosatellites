@@ -95,12 +95,13 @@ def get_objective(
     n_jobs: int,
 ) -> Callable:
     def objective(trial: optuna.Trial) -> float:
-        n_estimators = trial.suggest_int("n_estimators", 10, 50)  # Drastically reduced from 300
-        max_depth = trial.suggest_int("max_depth", 3, 12)         # Shallower trees
-        min_samples_split = trial.suggest_int("min_samples_split", 20, 200)
-        min_samples_leaf = trial.suggest_int("min_samples_leaf", 10, 100)
-        max_leaf_nodes = trial.suggest_int("max_leaf_nodes", 10, 100) 
-        max_samples = trial.suggest_float("max_samples", 0.5, 0.9)
+        n_estimators = trial.suggest_int("n_estimators", 20, 64)      
+        max_depth = trial.suggest_int("max_depth", 8, 14)             
+        min_samples_split = trial.suggest_int("min_samples_split", 20, 120) 
+        min_samples_leaf = trial.suggest_int("min_samples_leaf", 10, 40)     
+        
+        max_leaf_nodes = trial.suggest_int("max_leaf_nodes", 80, 128) 
+        max_samples = trial.suggest_float("max_samples", 0.6, 0.9)   
         class_weight_opt = trial.suggest_categorical("class_weight", ["balanced", "None"])
         cw = None if class_weight_opt == "None" else "balanced"
 

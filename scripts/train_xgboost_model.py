@@ -170,8 +170,8 @@ def get_objective(
         )
 
         params = {
-            "max_depth": trial.suggest_int("max_depth", 3, 10),
-            "n_estimators": trial.suggest_int("n_estimators", 50, 500),
+            "max_depth": trial.suggest_int("max_depth", 3, 8),
+            "n_estimators": trial.suggest_int("n_estimators", 20, 100),
             "reg_alpha": trial.suggest_float("reg_alpha", 1e-8, 10.0, log=True),
             "reg_lambda": trial.suggest_float("reg_lambda", 1e-8, 10.0, log=True),
             "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
@@ -186,6 +186,10 @@ def get_objective(
                 "grow_policy", ["depthwise", "lossguide"]
             ),
         }
+
+        # If lossguide, limit leaves
+        if params["grow_policy"] == "lossguide":
+            params["max_leaves"] = trial.suggest_int("max_leaves", 16, 64)
 
         if binary_target:
             params["objective"] = "binary:logistic"
