@@ -1,0 +1,21 @@
+Mode: Binary
+Window Size: 10
+Feature Set: full
+Best Params: {'max_depth': 19, 'min_samples_split': 199, 'min_samples_leaf': 52, 'criterion': 'entropy', 'ccp_alpha': 1.0687969489136687e-05, 'class_weight': 'balanced'}
+Best CV Score: 0.530838465182378
+Test Subset Accuracy: 0.8311
+Test Hamming Loss: 0.1689
+Test F1 Score: 0.5448
+Model Size (KB): 72.0088
+Inference Time (us/sample): 0.1222
+
+Classification Report:
+              precision    recall  f1-score   support
+
+      Normal       0.88      0.91      0.90     47909
+       Fault       0.60      0.50      0.54     12079
+
+    accuracy                           0.83     59988
+   macro avg       0.74      0.71      0.72     59988
+weighted avg       0.82      0.83      0.83     59988
+
