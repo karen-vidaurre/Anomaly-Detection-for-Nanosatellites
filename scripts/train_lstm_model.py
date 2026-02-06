@@ -1,0 +1,285 @@
+"""
+This script trains an LSTM model on the processed 3D datasets.
+"""
+
+import argparse
+import logging
+import os
+import sys
+import json
+import numpy as np
+import optuna
+import tensorflow as tf
+from tensorflow.keras import layers, models, callbacks, optimizers
+from sklearn.metrics import (
+    classification_report,
+    confusion_matrix,
+    precision_score,
+    recall_score,
+    f1_score,
+    accuracy_score
+)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
+logger = logging.getLogger(__name__)
+
+
+def parse_arguments() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Train an LSTM model.")
+    parser.add_argument(
+        "--data_dir",
+        type=str,
+        default="data/processed/lstm/w20",
+        help="Directory containing X_train.npy, y_train.npy, etc.",
+    )
+    parser.add_argument(
+        "--model_dir",
+        type=str,
+        default="models/lstm",
+        help="Directory to save the model and metrics.",
+    )
+    parser.add_argument(
+        "--n_trials", 
+        type=int, 
+        default=25, 
+        help="Number of Optuna trials."
+    )
+    parser.add_argument(
+        "--epochs", 
+        type=int, 
+        default=30, 
+        help="Number of epochs for final training."
+    )
+    parser.add_argument(
+        "--batch_size_list",
+        type=str,
+        default="64,128",
+        help="Comma-separated list of batch sizes to try.",
+    )
+    return parser.parse_args()
+
+
+def load_data(data_dir: str):
+    """
+    Loads .npy files from the data directory.
+    """
+    logger.info(f"Loading data from {data_dir}...")
+    try:
+        X_train = np.load(os.path.join(data_dir, "X_train.npy"))
+        y_train = np.load(os.path.join(data_dir, "y_train.npy"))
+        X_val = np.load(os.path.join(data_dir, "X_val.npy"))
+        y_val = np.load(os.path.join(data_dir, "y_val.npy"))
+        X_test = np.load(os.path.join(data_dir, "X_test.npy"))
+        y_test = np.load(os.path.join(data_dir, "y_test.npy"))
+        
+        logger.info(f"X_train: {X_train.shape}, y_train: {y_train.shape}")
+        return X_train, y_train, X_val, y_val, X_test, y_test
+    except Exception as e:
+        logger.error(f"Failed to load data: {e}")
+        sys.exit(1)
+
+
+def build_lstm_model(
+    input_shape,
+    n_units=64,
+    n_layers=1,
+    dropout=0.3,
+    lr=1e-3
+):
+    """
+    Builds the LSTM model using Keras.
+    """
+    model = models.Sequential()
+    model.add(layers.Input(shape=input_shape))
+
+    for i in range(n_layers):
+        return_seq = i < (n_layers - 1)
+        model.add(
+            layers.LSTM(
+                n_units,
+                return_sequences=return_seq
+            )
+        )
+        model.add(layers.Dropout(dropout))
+
+    # Binary Classification Output
+    model.add(layers.Dense(1, activation="sigmoid"))
+    
+    model.compile(
+        optimizer=optimizers.Adam(learning_rate=lr),
+        loss="binary_crossentropy",
+        metrics=["accuracy"]
+    )
+
+    return model
+
+
+def get_objective(X_train, y_train, X_val, y_val, batch_sizes):
+    """
+    Returns Optuna objective function.
+    """
+    input_shape = (X_train.shape[1], X_train.shape[2])
+
+    def objective(trial):
+        # Search Space
+        n_units = trial.suggest_int("n_units", 32, 128)
+        n_layers = trial.suggest_int("n_layers", 1, 2)
+        dropout = trial.suggest_float("dropout", 0.2, 0.5)
+        lr = trial.suggest_float("lr", 1e-4, 5e-3, log=True)
+        batch_size = trial.suggest_categorical("batch_size", batch_sizes)
+
+        model = build_lstm_model(
+            input_shape=input_shape,
+            n_units=n_units,
+            n_layers=n_layers,
+            dropout=dropout,
+            lr=lr
+        )
+
+        # Train for fewer epochs during optimization
+        model.fit(
+            X_train, y_train,
+            validation_data=(X_val, y_val),
+            epochs=15,
+            batch_size=batch_size,
+            verbose=0,
+            callbacks=[
+                callbacks.EarlyStopping(monitor="val_loss", patience=5)
+            ]
+        )
+
+        y_pred = (model.predict(X_val, verbose=0) > 0.5).astype(int).ravel()
+
+        recall = recall_score(y_val, y_pred, zero_division=0)
+        precision = precision_score(y_val, y_pred, zero_division=0)
+        
+        if precision < 0.60: # Relaxed slightly for stability
+            return 0.0
+            
+        # Composite score favoring Recall (Safety Critical)
+        score = 0.6 * recall + 0.4 * precision
+        return score
+
+    return objective
+
+
+def evaluate_model(model, X_test, y_test):
+    y_pred_prob = model.predict(X_test, verbose=0)
+    y_pred = (y_pred_prob > 0.5).astype(int).ravel()
+    
+    acc = accuracy_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred, zero_division=0)
+    report = classification_report(y_test, y_pred, target_names=["Nominal", "Anomaly"])
+    cm = confusion_matrix(y_test, y_pred)
+    
+    return acc, f1, report, cm
+
+
+def main():
+    args = parse_arguments()
+    
+    # Set seeds
+    SEED = 42
+    np.random.seed(SEED)
+    tf.random.set_seed(SEED)
+    
+    # Create model dir
+    os.makedirs(args.model_dir, exist_ok=True)
+    
+    # Load Data
+    X_train, y_train, X_val, y_val, X_test, y_test = load_data(args.data_dir)
+    
+    # Parse batch sizes
+    try:
+        batch_sizes = [int(x) for x in args.batch_size_list.split(",")]
+    except ValueError:
+        logger.error("Invalid batch_size_list")
+        sys.exit(1)
+        
+    # --- Optuna Optimization ---
+    logger.info(f"Starting Optuna Optimization ({args.n_trials} trials)...")
+    study = optuna.create_study(direction="maximize")
+    objective = get_objective(X_train, y_train, X_val, y_val, batch_sizes)
+    study.optimize(objective, n_trials=args.n_trials)
+    
+    best_params = study.best_params
+    logger.info(f"Best Params: {best_params}")
+    
+    # --- Final Training ---
+    logger.info("Retraining best model on full Training set...")
+    
+    input_shape = (X_train.shape[1], X_train.shape[2])
+    
+    final_model = build_lstm_model(
+        input_shape=input_shape,
+        n_units=best_params["n_units"],
+        n_layers=best_params["n_layers"],
+        dropout=best_params["dropout"],
+        lr=best_params["lr"]
+    )
+    
+    # Save best checkpoint
+    checkpoint_path = os.path.join(args.model_dir, "best_lstm_model.keras")
+    checkpoint = callbacks.ModelCheckpoint(
+        checkpoint_path, 
+        monitor="val_loss", 
+        save_best_only=True,
+        verbose=1
+    )
+    
+    history = final_model.fit(
+        X_train, y_train,
+        validation_data=(X_val, y_val),
+        epochs=args.epochs,
+        batch_size=best_params["batch_size"],
+        callbacks=[checkpoint],
+        verbose=1
+    )
+    
+    # Load best model for evaluation
+    logger.info(f"Loading best model from {checkpoint_path}...")
+    best_model = models.load_model(checkpoint_path)
+    
+    # --- Evaluation ---
+    logger.info("Evaluating on Test Set...")
+    acc, f1, report, cm = evaluate_model(best_model, X_test, y_test)
+    
+    logger.info(f"Test Accuracy: {acc:.4f}")
+    logger.info(f"Test F1 Score: {f1:.4f}")
+    logger.info("\n" + report)
+    
+    # Calculate Latency / Size
+    import time
+    start_time = time.perf_counter()
+    _ = best_model.predict(X_test[:100], verbose=0) # Warmup
+    end_time = time.perf_counter()
+    
+    t0 = time.perf_counter()
+    _ = best_model.predict(X_test, verbose=0)
+    t1 = time.perf_counter()
+    
+    latency_us = ((t1 - t0) / len(X_test)) * 1e6
+    model_size_kb = os.path.getsize(checkpoint_path) / 1024
+    
+    # Save Metrics
+    metrics_file = os.path.join(args.model_dir, "metrics.txt")
+    with open(metrics_file, "w") as f:
+        f.write(f"Best Params: {best_params}\n")
+        f.write(f"Test Accuracy: {acc:.4f}\n")
+        f.write(f"Test F1 Score: {f1:.4f}\n")
+        f.write(f"Model Size: {model_size_kb:.2f} KB\n")
+        f.write(f"Inference Latency: {latency_us:.2f} us/sample\n")
+        f.write("\nClassification Report:\n")
+        f.write(report)
+        f.write("\nConfusion Matrix:\n")
+        f.write(str(cm))
+        
+    logger.info(f"Metrics saved to {metrics_file}")
+    logger.info("Done.")
+
+if __name__ == "__main__":
+    main()

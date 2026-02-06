@@ -1,0 +1,19 @@
+Best Params: {'n_units': 32, 'n_layers': 1, 'dropout': 0.29307244517148295, 'lr': 0.00011051565368515017, 'batch_size': 128}
+Test Accuracy: 0.7071
+Test F1 Score: 0.1902
+Model Size: 104.21 KB
+Inference Latency: 30.95 us/sample
+
+Classification Report:
+              precision    recall  f1-score   support
+
+     Nominal       0.70      0.99      0.82     40953
+     Anomaly       0.77      0.11      0.19     19025
+
+    accuracy                           0.71     59978
+   macro avg       0.74      0.55      0.51     59978
+weighted avg       0.73      0.71      0.62     59978
+
+Confusion Matrix:
+[[40349   604]
+ [16962  2063]]
