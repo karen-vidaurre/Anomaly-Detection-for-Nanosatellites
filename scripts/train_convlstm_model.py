@@ -1,5 +1,5 @@
 """
-This script trains an LSTM model on the processed 3D datasets.
+This script trains a Conv1D-LSTM model on the processed 3D datasets.
 """
 
 import argparse
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 
 def parse_arguments() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train an LSTM model.")
+    parser = argparse.ArgumentParser(description="Train a Conv1D-LSTM model.")
     parser.add_argument(
         "--data_dir",
         type=str,
@@ -45,7 +45,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--model_dir",
         type=str,
-        default="models/lstm",
+        default="models/convlstm",  # Changed to convlstm
         help="Directory to save the model and metrics.",
     )
     parser.add_argument(
@@ -70,9 +70,6 @@ def parse_arguments() -> argparse.Namespace:
 
 
 def load_data(data_dir: str):
-    """
-    Loads .npy files from the data directory.
-    """
     logger.info(f"Loading data from {data_dir}...")
     try:
         X_train = np.load(os.path.join(data_dir, "X_train.npy"))
@@ -89,19 +86,32 @@ def load_data(data_dir: str):
         sys.exit(1)
 
 
-def build_lstm_model(
+def build_convlstm_model(
     input_shape,
+    n_filters=64,
+    kernel_size=3,
     n_units=64,
     n_layers=1,
     dropout=0.3,
     lr=1e-3
 ):
     """
-    Builds the LSTM model using Keras.
+    Builds the Conv1D + LSTM model using Keras.
     """
     model = models.Sequential()
     model.add(layers.Input(shape=input_shape))
+    
+    # Conv1D Layer for Feature Extraction
+    model.add(layers.Conv1D(
+        filters=n_filters, 
+        kernel_size=kernel_size, 
+        activation='relu', 
+        padding='same'
+    ))
+    # Optional pooling to reduce dimensionality/noise
+    model.add(layers.MaxPooling1D(pool_size=2))
 
+    # LSTM Layers
     for i in range(n_layers):
         return_seq = i < (n_layers - 1)
         model.add(
@@ -125,28 +135,28 @@ def build_lstm_model(
 
 
 def get_objective(X_train, y_train, X_val, y_val, batch_sizes, class_weights):
-    """
-    Returns Optuna objective function.
-    """
     input_shape = (X_train.shape[1], X_train.shape[2])
 
     def objective(trial):
         # Search Space
+        n_filters = trial.suggest_int("n_filters", 32, 128)
+        kernel_size = trial.suggest_int("kernel_size", 3, 7)
         n_units = trial.suggest_int("n_units", 32, 128)
         n_layers = trial.suggest_int("n_layers", 1, 2)
         dropout = trial.suggest_float("dropout", 0.2, 0.5)
         lr = trial.suggest_float("lr", 1e-4, 5e-3, log=True)
         batch_size = trial.suggest_categorical("batch_size", batch_sizes)
 
-        model = build_lstm_model(
+        model = build_convlstm_model(
             input_shape=input_shape,
+            n_filters=n_filters,
+            kernel_size=kernel_size,
             n_units=n_units,
             n_layers=n_layers,
             dropout=dropout,
             lr=lr
         )
 
-        # Train for fewer epochs during optimization
         model.fit(
             X_train, y_train,
             validation_data=(X_val, y_val),
@@ -160,10 +170,8 @@ def get_objective(X_train, y_train, X_val, y_val, batch_sizes, class_weights):
         )
 
         y_pred_prob = model.predict(X_val, verbose=0)
-        # Use default threshold for optimization loop
         y_pred = (y_pred_prob > 0.5).astype(int).ravel()
 
-        # Optimize for F1 Score (Balanced)
         f1 = f1_score(y_val, y_pred, average='macro', zero_division=0)
         return f1
 
@@ -185,31 +193,24 @@ def evaluate_model(model, X_test, y_test, threshold=0.5):
 def main():
     args = parse_arguments()
     
-    # Set seeds
     SEED = 42
     np.random.seed(SEED)
     tf.random.set_seed(SEED)
     
-    # Create model dir
     os.makedirs(args.model_dir, exist_ok=True)
-    
-    # Load Data
     X_train, y_train, X_val, y_val, X_test, y_test = load_data(args.data_dir)
     
-    # Compute Class Weights
-    logger.info("Computing class weights to handle imbalance...")
+    logger.info("Computing class weights...")
     cw = class_weight.compute_class_weight('balanced', classes=np.unique(y_train), y=y_train)
     class_weights_dict = dict(zip(np.unique(y_train), cw))
     logger.info(f"Class Weights: {class_weights_dict}")
 
-    # Parse batch sizes
     try:
         batch_sizes = [int(x) for x in args.batch_size_list.split(",")]
     except ValueError:
         logger.error("Invalid batch_size_list")
         sys.exit(1)
         
-    # --- Optuna Optimization ---
     logger.info(f"Starting Optuna Optimization ({args.n_trials} trials)...")
     study = optuna.create_study(direction="maximize")
     objective = get_objective(X_train, y_train, X_val, y_val, batch_sizes, class_weights_dict)
@@ -218,21 +219,20 @@ def main():
     best_params = study.best_params
     logger.info(f"Best Params: {best_params}")
     
-    # --- Final Training ---
-    logger.info("Retraining best model on full Training set...")
-    
+    logger.info("Retraining best model...")
     input_shape = (X_train.shape[1], X_train.shape[2])
     
-    final_model = build_lstm_model(
+    final_model = build_convlstm_model(
         input_shape=input_shape,
+        n_filters=best_params["n_filters"],
+        kernel_size=best_params["kernel_size"],
         n_units=best_params["n_units"],
         n_layers=best_params["n_layers"],
         dropout=best_params["dropout"],
         lr=best_params["lr"]
     )
     
-    # Save best checkpoint
-    checkpoint_path = os.path.join(args.model_dir, "best_lstm_model.keras")
+    checkpoint_path = os.path.join(args.model_dir, "best_convlstm_model.keras")
     checkpoint = callbacks.ModelCheckpoint(
         checkpoint_path, 
         monitor="val_loss", 
@@ -250,28 +250,23 @@ def main():
         verbose=1
     )
     
-    # Load best model for evaluation
     logger.info(f"Loading best model from {checkpoint_path}...")
     best_model = models.load_model(checkpoint_path)
     
-    # --- Threshold Optimization ---
-    logger.info("Optimizing Decision Threshold on Validation Set (Maximizing F1)...")
+    logger.info("Optimizing Threshold for F1...")
     val_probs = best_model.predict(X_val, verbose=0)
     best_thresh = 0.5
     best_f1 = 0.0
     
     for thresh in np.arange(0.1, 0.9, 0.05):
         y_val_pred = (val_probs > thresh).astype(int).ravel()
-        # Maximize F1 Score
         f1 = f1_score(y_val, y_val_pred, average='macro', zero_division=0)
-        
         if f1 > best_f1:
             best_f1 = f1
             best_thresh = thresh
             
     logger.info(f"Best Threshold: {best_thresh:.2f} (Val F1: {best_f1:.4f})")
 
-    # --- Evaluation ---
     logger.info("Evaluating on Test Set...")
     acc, f1, report, cm = evaluate_model(best_model, X_test, y_test, threshold=best_thresh)
     
@@ -279,12 +274,9 @@ def main():
     logger.info(f"Test F1 Score: {f1:.4f}")
     logger.info("\n" + report)
     
-    # Calculate Latency / Size
     import time
     start_time = time.perf_counter()
-    _ = best_model.predict(X_test[:100], verbose=0) # Warmup
-    end_time = time.perf_counter()
-    
+    _ = best_model.predict(X_test[:100], verbose=0)
     t0 = time.perf_counter()
     _ = best_model.predict(X_test, verbose=0)
     t1 = time.perf_counter()
@@ -292,7 +284,6 @@ def main():
     latency_us = ((t1 - t0) / len(X_test)) * 1e6
     model_size_kb = os.path.getsize(checkpoint_path) / 1024
     
-    # Save Metrics
     metrics_file = os.path.join(args.model_dir, "metrics.txt")
     with open(metrics_file, "w") as f:
         f.write(f"Best Params: {best_params}\n")
