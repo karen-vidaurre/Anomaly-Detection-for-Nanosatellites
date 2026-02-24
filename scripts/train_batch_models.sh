@@ -13,7 +13,7 @@ for w in "${WINDOWS[@]}"; do
     venv/bin/python3 scripts/train_random_forest_model.py \
         --window_size $w \
         --binary_target \
-        --n_trials 30 \
+        --n_trials 50 \
         --feature_set full \
         --optimize_metric f1
 
@@ -22,7 +22,7 @@ for w in "${WINDOWS[@]}"; do
     venv/bin/python3 scripts/train_xgboost_model.py \
         --window_size $w \
         --binary_target \
-        --n_trials 30 \
+        --n_trials 50 \
         --feature_set full \
         --optimize_metric f1
 
@@ -31,7 +31,7 @@ for w in "${WINDOWS[@]}"; do
     venv/bin/python3 scripts/train_decision_tree_model.py \
         --window_size $w \
         --binary_target \
-        --n_trials 30 \
+        --n_trials 50 \
         --feature_set full \
         --optimize_metric f1
         
