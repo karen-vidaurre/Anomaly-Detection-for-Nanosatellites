@@ -65,7 +65,10 @@ def load_datasets(
 
     target_cols = [c for c in train_df.columns if c.startswith("fault_") or c == "any_fault"]
     all_cols = train_df.columns
-    feature_cols = [c for c in all_cols if c not in target_cols and c != "Time"]
+    feature_cols = [
+        c for c in all_cols
+        if c not in target_cols and c != "Time" and not c.startswith("point_error")
+    ]
 
     if feature_set == "stat_only":
         accepted_suffixes = ["_delta", "_var", "_accel", "_std"]

@@ -23,7 +23,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--data_path",
         type=str,
-        default="data/raw/sim_balanced_dataset.csv",
+        default="data/raw/sim_357_bal_t1.csv",
         help="Path to raw CSV.",
     )
     parser.add_argument(
@@ -151,7 +151,6 @@ def generate_features(
         "mout_mtq",
         "out_gps",
         "wout_gyro",
-        "point_error",
         "Bout_magn",
     )
     raw_feature_cols = [

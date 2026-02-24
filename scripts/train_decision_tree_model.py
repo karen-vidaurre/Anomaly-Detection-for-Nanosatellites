@@ -127,7 +127,10 @@ def load_datasets(
 
     # Identify Features
     all_cols = train_df.columns
-    feature_cols = [c for c in all_cols if c not in target_cols and c != "Time"]
+    feature_cols = [
+        c for c in all_cols
+        if c not in target_cols and c != "Time" and not c.startswith("point_error")
+    ]
 
     # --- FEATURE SELECTION ---
     if feature_set == "stat_only":

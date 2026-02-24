@@ -136,7 +136,6 @@ def main():
         "mout_mtq",
         "out_gps",
         "wout_gyro",
-        "point_error",
         "Bout_magn",
     )
     feature_cols = [
