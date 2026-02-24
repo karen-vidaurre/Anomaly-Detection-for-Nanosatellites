@@ -312,6 +312,23 @@ def save_split_with_gap(
     logger.info(f"  Val:   {len(val_df)} rows (dropped {gap} rows before)")
     logger.info(f"  Test:  {len(test_df)} rows (dropped {gap} rows before)")
 
+    # Log class distribution for each split
+    target_cols = [c for c in df.columns if c.startswith("fault_") or c == "any_fault"]
+    if target_cols:
+        # Binary anomaly indicator: 1 if any target is active
+        for split_name, split_df in [("Train", train_df), ("Val", val_df), ("Test", test_df)]:
+            n = len(split_df)
+            if n == 0:
+                logger.warning(f"  {split_name}: 0 rows — check split ratios and gap.")
+                continue
+            y_bin = (split_df[target_cols].max(axis=1) > 0).astype(int)
+            n_nom = int((y_bin == 0).sum())
+            n_anom = int((y_bin == 1).sum())
+            logger.info(
+                f"  {split_name} class balance: Nominal={n_nom} ({100*n_nom/n:.1f}%),"
+                f" Anomaly={n_anom} ({100*n_anom/n:.1f}%)"
+            )
+
 
 def main():
     args = parse_arguments()

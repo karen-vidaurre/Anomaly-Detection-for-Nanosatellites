@@ -22,7 +22,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--data_path",
         type=str,
-        default="data/raw/sim_001_full_overlaps.csv",
+        default="data/raw/sim_357_bal_t1.csv",
         help="Path to raw CSV.",
     )
     parser.add_argument(
@@ -206,6 +206,18 @@ def main():
     logger.info(f"Train: {len(X_train)} samples")
     logger.info(f"Val:   {len(X_val)} samples (Gap: {gap_windows})")
     logger.info(f"Test:  {len(X_test)} samples (Gap: {gap_windows})")
+
+    for split_name, y_split in [("Train", y_train), ("Val", y_val), ("Test", y_test)]:
+        n = len(y_split)
+        if n == 0:
+            logger.warning(f"  {split_name}: 0 samples — check split ratios and gap.")
+            continue
+        n_nom = int(np.sum(y_split == 0))
+        n_anom = int(np.sum(y_split == 1))
+        logger.info(
+            f"  {split_name} class balance: Nominal={n_nom} ({100*n_nom/n:.1f}%),"
+            f" Anomaly={n_anom} ({100*n_anom/n:.1f}%)"
+        )
 
     # --- Standardization (Normalization) ---
     logger.info("Computing normalization stats on Nominal Training data...")
