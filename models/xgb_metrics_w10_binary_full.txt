@@ -1,19 +1,19 @@
 Feature Set: full
-Weight Strategy: balanced
-Best Params: {'max_depth': 7, 'n_estimators': 93, 'reg_alpha': 5.415642735132408e-08, 'reg_lambda': 0.01489762026132219, 'learning_rate': 0.09260694388946754, 'subsample': 0.5696063951831758, 'colsample_bytree': 0.9820503172655723, 'min_child_weight': 5, 'gamma': 2.162161092347446, 'grow_policy': 'lossguide', 'max_leaves': 63, 'n_jobs': -1, 'random_state': 42, 'tree_method': 'hist', 'objective': 'binary:logistic', 'eval_metric': 'logloss', 'scale_pos_weight': np.float64(3.9469239195731296)}
-Test F1 Score: 0.5672
-Test Accuracy: 0.8349
-Test Hamming Loss: 0.1651
-Model Size (KB): 422.6943
-Inference Time (us/sample): 1.1078
+Weight Strategy: none
+Best Params: {'max_depth': 7, 'n_estimators': 97, 'reg_alpha': 0.04923329808682036, 'reg_lambda': 5.2585054145819e-05, 'learning_rate': 0.29394283059907444, 'subsample': 0.9847821568188876, 'colsample_bytree': 0.9150031091738485, 'min_child_weight': 7, 'gamma': 1.7227534903972501, 'grow_policy': 'depthwise', 'n_jobs': -1, 'random_state': 42, 'tree_method': 'hist', 'objective': 'binary:logistic', 'eval_metric': 'logloss', 'scale_pos_weight': 1.0}
+Test F1 Score: 0.7196
+Test Accuracy: 0.9055
+Test Hamming Loss: 0.0945
+Model Size (KB): 429.7207
+Inference Time (us/sample): 1.1563
 
 Classification Report:
               precision    recall  f1-score   support
 
-      Normal       0.89      0.91      0.90     47909
-       Fault       0.60      0.54      0.57     12079
+      Normal       0.90      0.99      0.94     47563
+       Fault       0.93      0.59      0.72     12425
 
-    accuracy                           0.83     59988
-   macro avg       0.74      0.72      0.73     59988
-weighted avg       0.83      0.83      0.83     59988
+    accuracy                           0.91     59988
+   macro avg       0.92      0.79      0.83     59988
+weighted avg       0.91      0.91      0.90     59988
 

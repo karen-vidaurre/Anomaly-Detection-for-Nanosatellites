@@ -1,14 +1,1 @@
 Rank,Feature,Importance
-1,mout_mtq_1,0.159100
-2,mout_mtq_2,0.156157
-3,mout_mtq_3,0.115416
-4,out_gps_1_delta,0.064980
-5,out_gps_3_delta,0.062821
-6,out_gps_2_delta,0.062155
-7,Vout_ss_1_delta,0.059687
-8,Vout_ss_6_delta,0.059232
-9,Vout_ss_3_delta,0.056484
-10,Vout_ss_4_delta,0.056015
-11,Vout_ss_5_delta,0.054303
-12,Vout_ss_2_delta,0.047426
-13,mout_mtq_2_delta,0.046224

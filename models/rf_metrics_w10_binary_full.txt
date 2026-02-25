@@ -1,21 +1,21 @@
 Mode: Binary
 Window Size: 10
 Feature Set: full
-Best Params: {'n_estimators': 41, 'max_depth': 13, 'min_samples_split': 77, 'min_samples_leaf': 40, 'max_leaf_nodes': 118, 'max_samples': 0.8962723018429763, 'class_weight': 'balanced'}
-Best CV Score: 0.5225966215618644
-Test Subset Accuracy: 0.8141
-Test Hamming Loss: 0.1859
-Test F1 Score: 0.5287
-Model Size (KB): 770.1807
-Inference Time (us/sample): 0.6297
+Best Params: {'n_estimators': 30, 'max_depth': 14, 'min_samples_split': 21, 'min_samples_leaf': 19, 'max_leaf_nodes': 85, 'max_samples': 0.6484128463305115, 'class_weight': 'balanced'}
+Best CV Score: 0.5500410349444949
+Test Subset Accuracy: 0.8296
+Test Hamming Loss: 0.1704
+Test F1 Score: 0.5446
+Model Size (KB): 409.2432
+Inference Time (us/sample): 0.6244
 
 Classification Report:
               precision    recall  f1-score   support
 
-      Normal       0.88      0.89      0.88     47909
-       Fault       0.54      0.52      0.53     12079
+      Normal       0.87      0.92      0.90     47563
+       Fault       0.61      0.49      0.54     12425
 
-    accuracy                           0.81     59988
-   macro avg       0.71      0.70      0.71     59988
-weighted avg       0.81      0.81      0.81     59988
+    accuracy                           0.83     59988
+   macro avg       0.74      0.70      0.72     59988
+weighted avg       0.82      0.83      0.82     59988
 
