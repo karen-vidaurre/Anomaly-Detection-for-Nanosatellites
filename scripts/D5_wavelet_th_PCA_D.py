@@ -1,9 +1,11 @@
 import os
 import argparse
 import numpy as np
-import tensorflow as tf
+# import tensorflow as tf
 import pywt
 import pickle
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (
     f1_score,
     roc_auc_score,
@@ -24,7 +26,7 @@ BASE_DIR = "./data/processed"
 DATA_DIR = os.path.join(BASE_DIR, f"windows_{W_PARAM}")
 
 MODEL_DIR = "./models"
-RESULTS_DIR = "./results/D3_wavelet_th"
+RESULTS_DIR = "./results/D5_wavelet_th_PCA_D"
 
 os.makedirs(MODEL_DIR, exist_ok=True)
 os.makedirs(RESULTS_DIR, exist_ok=True)
@@ -122,68 +124,35 @@ A_test,  D_test  = compute_dwt_windows(X_test)
 # ============================================================
 # Detector
 # ============================================================
-def adaptive_variance_detector(window, k=1.0):
-    stds = np.std(window, axis=0)
-    mu = np.mean(stds)
-    sigma = np.std(stds)
-    return 1 if np.any(stds > mu + k * sigma) else 0
-from sklearn.metrics import f1_score
+scaler = StandardScaler()
+D_train_reshaped = D_train.reshape(D_train.shape[0], -1)
+print(D_train_reshaped.shape)
+D_train_nom = D_train_reshaped[y_train == 0]
+pca = PCA(n_components=0.95)  # conserva 95% varianza
+pca.fit(D_train_nom)
 
-# For D coefficients
-thresholds = np.linspace(0.02, 2, 30)
-best_th = thresholds[0]
-best_f1 = 0
-
-for th in thresholds:
-    y_val_pred = np.array([
-        adaptive_variance_detector(w, th) for w in D_val
-    ])
-    f1 = f1_score(y_val, y_val_pred)
-    if f1 > best_f1:
-        best_f1 = f1
-        best_th = th
-
-print(f"Best threshold D = {best_th:.4f}, F1_val = {best_f1:.4f})")
-
-y_test_predD = np.array([
-    adaptive_variance_detector(w, best_th) for w in D_test
-])
-
-
-# For A coefficients
-thresholds = np.linspace(0.02, 2, 30)
-best_th = thresholds[0]
-best_f1 = 0
-
-for th in thresholds:
-    y_val_pred = np.array([
-        adaptive_variance_detector(w, th) for w in A_val
-    ])
-    f1 = f1_score(y_val, y_val_pred)
-    if f1 > best_f1:
-        best_f1 = f1
-        best_th = th
-
-print(f"Best threshold A= {best_th:.4f}, F1_val = {best_f1:.4f})")
-y_test_predA = np.array([
-    adaptive_variance_detector(w, best_th) for w in A_test
-])
+# Error de reconstrucción en nominal
+D_rec = pca.inverse_transform(pca.transform(D_train_nom))
+recon_error = np.mean((D_train_nom - D_rec)**2, axis=1)
+mu, sigma = recon_error.mean(), recon_error.std()
+threshold = mu + 0.001 * sigma
 
 # ============================================================
 # Evaluation
 # ============================================================
-# y_pred_prob = model.predict(X_test)
-y_pred_wavelet = np.logical_or(y_test_predD, y_test_predA).astype(int)
+D_test_bi = D_test.reshape(D_test.shape[0], -1)
+D_test_rec = pca.inverse_transform(pca.transform(D_test_bi))
+test_error = np.mean((D_test_bi - D_test_rec)**2, axis=1)
+y_pred_pcaD = (test_error > threshold).astype(int)
+
 # Metrics
 
-f1 = f1_score(y_test, y_pred_wavelet)
-# roc = roc_auc_score(y_test, y_pred_prob)
-cm = confusion_matrix(y_test, y_pred_wavelet)
+f1 = f1_score(y_test, y_pred_pcaD)
+cm = confusion_matrix(y_test, y_pred_pcaD)
 
 print("F1-score:", f1)
-# print("ROC-AUC:", roc)
 print("Confusion Matrix:\n", cm)
-report = classification_report(y_test, y_pred_wavelet, digits=4)
+report = classification_report(y_test, y_pred_pcaD, digits=4)
 
 print("\nTest Results:\n")
 print(report)
@@ -194,7 +163,7 @@ print(report)
 # Save model and results
 # ============================================================
 
-with open(os.path.join(RESULTS_DIR, f"wavelet_variance_w{W_PARAM}.txt"), "w") as f:
-    f.write(f"Best threshold: {best_th}\n")
+with open(os.path.join(RESULTS_DIR, f"PCA_waveletD_w{W_PARAM}.txt"), "w") as f:
+    # f.write(f"Best threshold: {best_th}\n")
     f.write(report)
 print("\nResults saved successfully.")

@@ -14,20 +14,38 @@ for %%w in (%WINDOWS%) do (
     @REM echo Done window size %%w
     @REM echo.
 
-    echo ======================================
-    echo Adaptative variance based thresholding for window size %%w
-    echo ======================================
+    @REM echo ======================================
+    @REM echo Adaptative variance based thresholding for window size %%w
+    @REM echo ======================================
 
-    python scripts\D2_adaptative_variance_th.py --window_size %%w
+    @REM python scripts\D2_adaptative_variance_th.py --window_size %%w
 
-    echo Done window size %%w
-    echo.
+    @REM echo Done window size %%w
+    @REM echo.
 
     echo ======================================
     echo Wavelet based thresholding for window size %%w
     echo ======================================
 
     python scripts\D3_wavelet_th.py --window_size %%w
+
+    echo Done window size %%w
+    echo.
+
+    echo ======================================
+    echo Wavelet PCA - D coefficients for window size %%w
+    echo ======================================
+
+    python scripts\D5_wavelet_th_PCA_D.py --window_size %%w
+
+    echo Done window size %%w
+    echo.
+
+    echo ======================================
+    echo Wavelet PCA - A coefficients for window size %%w
+    echo ======================================
+
+    python scripts\D6_wavelet_th_PCA_A.py --window_size %%w
 
     echo Done window size %%w
     echo.

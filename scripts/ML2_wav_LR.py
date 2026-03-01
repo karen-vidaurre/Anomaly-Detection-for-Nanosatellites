@@ -1,11 +1,16 @@
 import os
 import argparse
 import numpy as np
-import tensorflow as tf
+# import tensorflow as tf
 import pywt
 import pickle
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (
     f1_score,
+    precision_score,
+    recall_score,
+    accuracy_score,
     roc_auc_score,
     confusion_matrix,
     classification_report
@@ -24,7 +29,7 @@ BASE_DIR = "./data/processed"
 DATA_DIR = os.path.join(BASE_DIR, f"windows_{W_PARAM}")
 
 MODEL_DIR = "./models"
-RESULTS_DIR = "./results/D3_wavelet_th"
+RESULTS_DIR = "./results/ML2_wav_LR"
 
 os.makedirs(MODEL_DIR, exist_ok=True)
 os.makedirs(RESULTS_DIR, exist_ok=True)
@@ -35,14 +40,17 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 
 X_train = np.load(os.path.join(DATA_DIR, "train/X.npy"))
 y_train = np.load(os.path.join(DATA_DIR, "train/y_bin.npy"))
+y_ch_train = np.load(os.path.join(DATA_DIR, "train", "y_ch.npy"))
 
 X_val = np.load(os.path.join(DATA_DIR, "val/X.npy"))
 y_val = np.load(os.path.join(DATA_DIR, "val/y_bin.npy"))
+y_ch_val   = np.load(os.path.join(DATA_DIR, "val",   "y_ch.npy"))
 
 X_test = np.load(os.path.join(DATA_DIR, "test/X.npy"))
 y_test = np.load(os.path.join(DATA_DIR, "test/y_bin.npy"))
+y_ch_test  = np.load(os.path.join(DATA_DIR, "test",  "y_ch.npy"))
 
-print(f"\nTraining CNN for window size {W_PARAM}")
+print(f"\nMultilabel thresholding for window size {W_PARAM}")
 print(f"Train samples: {len(X_train)}")
 # To remove pointing accuracy from training
 X_train = X_train[:, :, 0:-1]
@@ -50,7 +58,6 @@ X_val   = X_val[:, :, 0:-1]
 X_test  = X_test[:, :, 0:-1]
 
 print(f"\nTrain data shape{X_train.shape}")
-# print(X_train[0,:,-1])
 
 # ============================================================
 # Normalization
@@ -60,15 +67,15 @@ X_train_nom = X_train[y_train == 0]
 
 mean_feat = X_train_nom.mean(axis=(0,1))
 std_feat  = X_train_nom.std(axis=(0,1)) + 1e-8
-# Save scalers
-SCALER_DIR = os.path.join(DATA_DIR, "scalers")
-os.makedirs(SCALER_DIR, exist_ok=True)
+# # Save scalers
+# SCALER_DIR = os.path.join(DATA_DIR, "scalers")
+# os.makedirs(SCALER_DIR, exist_ok=True)
 
-with open(os.path.join(SCALER_DIR, "feature_scaler.pkl"), "wb") as f:
-    pickle.dump({
-        "mean": mean_feat,
-        "std": std_feat
-    }, f)
+# with open(os.path.join(SCALER_DIR, "feature_scaler.pkl"), "wb") as f:
+#     pickle.dump({
+#         "mean": mean_feat,
+#         "std": std_feat
+#     }, f)
 
 def scale_windows(X, mean, std):
     return (X - mean[None, None, :]) / std[None, None, :]
@@ -118,83 +125,86 @@ A_train, D_train = compute_dwt_windows(X_train)
 A_val,   D_val   = compute_dwt_windows(X_val)
 A_test,  D_test  = compute_dwt_windows(X_test)
 
-
 # ============================================================
 # Detector
 # ============================================================
-def adaptive_variance_detector(window, k=1.0):
-    stds = np.std(window, axis=0)
-    mu = np.mean(stds)
-    sigma = np.std(stds)
-    return 1 if np.any(stds > mu + k * sigma) else 0
-from sklearn.metrics import f1_score
+# D_train_nom = D_train[y_train == 0] # Check without this
+mean = np.mean(D_train, axis=(0,1), keepdims=True)
+std  = np.std(D_train, axis=(0,1), keepdims=True) + 1e-8
 
-# For D coefficients
-thresholds = np.linspace(0.02, 2, 30)
-best_th = thresholds[0]
-best_f1 = 0
+D_train_n = (D_train - mean) / std
+D_val_n   = (D_val   - mean) / std
+D_test_n  = (D_test  - mean) / std
 
-for th in thresholds:
-    y_val_pred = np.array([
-        adaptive_variance_detector(w, th) for w in D_val
-    ])
-    f1 = f1_score(y_val, y_val_pred)
-    if f1 > best_f1:
-        best_f1 = f1
-        best_th = th
+def compute_energy_features(D):
+    return np.sum(D**2, axis=1)
 
-print(f"Best threshold D = {best_th:.4f}, F1_val = {best_f1:.4f})")
+E_train = compute_energy_features(D_train_n)
+E_val   = compute_energy_features(D_val_n)
+E_test  = compute_energy_features(D_test_n)
 
-y_test_predD = np.array([
-    adaptive_variance_detector(w, best_th) for w in D_test
-])
+mask_anom = y_val == 1
 
+from sklearn.linear_model import LogisticRegression
 
-# For A coefficients
-thresholds = np.linspace(0.02, 2, 30)
-best_th = thresholds[0]
-best_f1 = 0
+models = []
 
-for th in thresholds:
-    y_val_pred = np.array([
-        adaptive_variance_detector(w, th) for w in A_val
-    ])
-    f1 = f1_score(y_val, y_val_pred)
-    if f1 > best_f1:
-        best_f1 = f1
-        best_th = th
+for ch in range(15):
 
-print(f"Best threshold A= {best_th:.4f}, F1_val = {best_f1:.4f})")
-y_test_predA = np.array([
-    adaptive_variance_detector(w, best_th) for w in A_test
-])
+    clf = LogisticRegression(
+        max_iter=1000,
+        class_weight='balanced'  # MUY IMPORTANTE
+    )
 
+    clf.fit(E_train, y_ch_train[:, ch])
+
+    models.append(clf)
+
+y_pred = np.zeros_like(y_ch_test)
+for ch in range(15):
+
+    prob = models[ch].predict_proba(E_test)[:,1]
+
+    y_pred[:,ch] = (prob > 0.7).astype(int)   # threshold ajustable
 # ============================================================
 # Evaluation
 # ============================================================
-# y_pred_prob = model.predict(X_test)
-y_pred_wavelet = np.logical_or(y_test_predD, y_test_predA).astype(int)
-# Metrics
 
-f1 = f1_score(y_test, y_pred_wavelet)
-# roc = roc_auc_score(y_test, y_pred_prob)
-cm = confusion_matrix(y_test, y_pred_wavelet)
+report = classification_report(
+    y_ch_test,
+    y_pred,
+    target_names=[f"ch{i}" for i in range(y_ch_test.shape[1])],
+    digits=4,
+    output_dict=True
+)
 
-print("F1-score:", f1)
-# print("ROC-AUC:", roc)
-print("Confusion Matrix:\n", cm)
-report = classification_report(y_test, y_pred_wavelet, digits=4)
-
-print("\nTest Results:\n")
-print(report)
-
-# print("\nClassification Report:\n")
-# print(classification_report(y_test, y_pred_wavelet))
 # ============================================================
-# Save model and results
+# Save everything
 # ============================================================
 
-with open(os.path.join(RESULTS_DIR, f"wavelet_variance_w{W_PARAM}.txt"), "w") as f:
-    f.write(f"Best threshold: {best_th}\n")
-    f.write(report)
-print("\nResults saved successfully.")
+EXP_DIR = os.path.join(RESULTS_DIR, f"window_{W_PARAM}")
+os.makedirs(EXP_DIR, exist_ok=True)
+
+# Save normalization params
+np.save(os.path.join(EXP_DIR, "dwt_mean.npy"), mean)
+np.save(os.path.join(EXP_DIR, "dwt_std.npy"), std)
+
+# Save feature scaling
+np.save(os.path.join(EXP_DIR, "input_mean.npy"), mean_feat)
+np.save(os.path.join(EXP_DIR, "input_std.npy"), std_feat)
+
+# Save classification report
+import json
+with open(os.path.join(EXP_DIR, "classification_report.json"), "w") as f:
+    json.dump(report, f, indent=4)
+
+# Save confusion matrices per channel
+conf_mats = {}
+for ch in range(y_ch_test.shape[1]):
+    cm = confusion_matrix(y_ch_test[:, ch], y_pred[:, ch])
+    conf_mats[f"ch{ch}"] = cm.tolist()
+
+with open(os.path.join(EXP_DIR, "confusion_matrices.json"), "w") as f:
+    json.dump(conf_mats, f, indent=4)
+
+print(f"\nResults saved in: {EXP_DIR}")
