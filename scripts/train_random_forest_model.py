@@ -71,8 +71,12 @@ def load_datasets(
     ]
 
     if feature_set == "stat_only":
-        accepted_suffixes = ["_delta", "_var", "_accel", "_std"]
-        feature_cols = [col for col in feature_cols if any(s in col for s in accepted_suffixes)]
+        STAT_SUFFIXES = (
+            "_delta", "_accel",
+            "_var_", "_std_", "_kurt_", "_skew_", "_range_", "_dev_",
+            "_mean_", "_min_", "_max_", "_median_",
+        )
+        feature_cols = [col for col in feature_cols if any(s in col for s in STAT_SUFFIXES)]
         if not feature_cols:
             logger.error("Feature set 'stat_only' resulted in 0 features!")
             sys.exit(1)
@@ -139,23 +143,24 @@ def get_objective(
 
 
 def evaluate_model(
-    clf, x_test, y_test, target_names, binary_target
+    clf, x_test, y_test, target_names, binary_target, threshold=0.5
 ) -> Tuple[float, float, float, str]:
-    y_pred = clf.predict(x_test)
-    subset_acc = accuracy_score(y_test, y_pred)
-    hamming = hamming_loss(y_test, y_pred)
-
     if binary_target:
+        y_prob = clf.predict_proba(x_test)[:, 1]
+        y_pred = (y_prob > threshold).astype(int)
         f1_metric = f1_score(y_test, y_pred, average="binary", zero_division=0)
         report = classification_report(
             y_test, y_pred, target_names=["Normal", "Fault"], zero_division=0
         )
     else:
+        y_pred = clf.predict(x_test)
         f1_metric = f1_score(y_test, y_pred, average="macro", zero_division=0)
         report = classification_report(
             y_test, y_pred, target_names=target_names, zero_division=0
         )
 
+    subset_acc = accuracy_score(y_test, y_pred)
+    hamming = hamming_loss(y_test, y_pred)
     return subset_acc, hamming, f1_metric, report
 
 
@@ -222,7 +227,18 @@ def main() -> None:
         y_val = y_val.ravel()
         y_test = y_test.ravel()
 
-    if args.normalize:
+    scaler_path = os.path.join(
+        args.data_dir, f"w{args.window_size}",
+        "binary" if args.binary_target else "multi",
+        "scaler_params.json",
+    )
+    if os.path.exists(scaler_path):
+        logger.info("Using pre-normalized data from builder (scaler_params.json found).")
+        if args.normalize:
+            logger.warning(
+                "--normalize flag is ignored: builder normalization already applied."
+            )
+    elif args.normalize:
         scaler = StandardScaler()
         x_train = scaler.fit_transform(x_train)
         x_val = scaler.transform(x_val)
@@ -237,9 +253,6 @@ def main() -> None:
 
     logger.info("Best Params: %s", study.best_trial.params)
 
-    x_full = np.concatenate([x_train, x_val], axis=0)
-    y_full = np.concatenate([y_train, y_val], axis=0)
-
     best_params = study.best_trial.params
     if "class_weight" in best_params:
         if best_params["class_weight"] == "None":
@@ -250,10 +263,22 @@ def main() -> None:
     best_clf = RandomForestClassifier(
         n_jobs=args.n_jobs, random_state=42, **best_params
     )
-    best_clf.fit(x_full, y_full)
+    best_clf.fit(x_train, y_train)
+
+    best_thresh = 0.5
+    if args.binary_target:
+        val_probs = best_clf.predict_proba(x_val)[:, 1]
+        best_f1_val = 0.0
+        for thresh in np.arange(0.1, 0.9, 0.05):
+            y_val_pred = (val_probs > thresh).astype(int)
+            f1_val = f1_score(y_val, y_val_pred, average="binary", zero_division=0)
+            if f1_val > best_f1_val:
+                best_f1_val = f1_val
+                best_thresh = thresh
+        logger.info("Best Threshold: %.2f (Val F1: %.4f)", best_thresh, best_f1_val)
 
     acc, hamm, f1, report = evaluate_model(
-        best_clf, x_test, y_test, target_names, args.binary_target
+        best_clf, x_test, y_test, target_names, args.binary_target, best_thresh
     )
 
     logger.info("Test F1: %.4f", f1)
@@ -278,6 +303,7 @@ def main() -> None:
         f.write(f"Feature Set: {args.feature_set}\n")
         f.write(f"Best Params: {best_params}\n")
         f.write(f"Best CV Score: {study.best_value}\n")
+        f.write(f"Best Threshold: {best_thresh:.2f}\n")
         f.write(f"Test Subset Accuracy: {acc:.4f}\n")
         f.write(f"Test Hamming Loss: {hamm:.4f}\n")
         f.write(f"Test F1 Score: {f1:.4f}\n")

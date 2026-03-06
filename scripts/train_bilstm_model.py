@@ -123,6 +123,18 @@ def build_bilstm_model(
     return model
 
 
+class ValF1Callback(tf.keras.callbacks.Callback):
+    """Computes binary F1 on the validation set at each epoch end and stores it as val_f1."""
+    def __init__(self, X_val, y_val):
+        super().__init__()
+        self.X_val = X_val
+        self.y_val = y_val
+
+    def on_epoch_end(self, epoch, logs=None):
+        y_pred = (self.model.predict(self.X_val, verbose=0) > 0.5).astype(int).ravel()
+        logs['val_f1'] = f1_score(self.y_val, y_pred, average='macro', zero_division=0)
+
+
 def get_objective(X_train, y_train, X_val, y_val, batch_sizes, class_weights):
     input_shape = (X_train.shape[1], X_train.shape[2])
 
@@ -216,19 +228,20 @@ def main():
     
     checkpoint_path = os.path.join(args.model_dir, "best_bilstm_model.keras")
     checkpoint = callbacks.ModelCheckpoint(
-        checkpoint_path, 
-        monitor="val_loss", 
+        checkpoint_path,
+        monitor="val_f1",
+        mode="max",
         save_best_only=True,
         verbose=1
     )
-    
+
     final_model.fit(
         X_train, y_train,
         validation_data=(X_val, y_val),
         epochs=args.epochs,
         batch_size=best_params["batch_size"],
         class_weight=class_weights_dict,
-        callbacks=[checkpoint],
+        callbacks=[ValF1Callback(X_val, y_val), checkpoint],
         verbose=1
     )
     

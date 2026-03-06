@@ -125,11 +125,12 @@ def load_datasets(
         logger.info(
             "Applying 'stat_only' filter: Dropping Raw, Mean, Min, Max, Median."
         )
-        accepted_suffixes = ["_delta", "_var", "_accel", "_std"]
-        filtered_cols = []
-        for col in feature_cols:
-            if any(s in col for s in accepted_suffixes):
-                filtered_cols.append(col)
+        STAT_SUFFIXES = (
+            "_delta", "_accel",
+            "_var_", "_std_", "_kurt_", "_skew_", "_range_", "_dev_",
+            "_mean_", "_min_", "_max_", "_median_",
+        )
+        filtered_cols = [col for col in feature_cols if any(s in col for s in STAT_SUFFIXES)]
 
         if len(filtered_cols) == 0:
             logger.error("Feature set 'stat_only' resulted in 0 features!")
@@ -320,8 +321,19 @@ def main():
         y_val = y_val.ravel()
         y_test = y_test.ravel()
 
-    # Normalize if requested
-    if args.normalize:
+    # Normalize if requested (skip if builder already normalized)
+    scaler_path = os.path.join(
+        args.data_dir, f"w{args.window_size}",
+        "binary" if args.binary_target else "multi",
+        "scaler_params.json",
+    )
+    if os.path.exists(scaler_path):
+        logger.info("Using pre-normalized data from builder (scaler_params.json found).")
+        if args.normalize:
+            logger.warning(
+                "--normalize flag is ignored: builder normalization already applied."
+            )
+    elif args.normalize:
         logger.info("Normalizing features using StandardScaler...")
         scaler = StandardScaler()
         x_train = scaler.fit_transform(x_train)
@@ -377,22 +389,34 @@ def main():
 
     clf = XGBClassifier(**best_params)
 
-    x_train_full = np.vstack([x_train, x_val])
-    y_train_full = np.concatenate([y_train, y_val])
+    clf.fit(x_train, y_train, verbose=False)
 
-    clf.fit(x_train_full, y_train_full, verbose=False)
+    best_thresh = 0.5
+    if args.binary_target:
+        val_probs = clf.predict_proba(x_val)[:, 1]
+        best_f1_val = 0.0
+        for thresh in np.arange(0.1, 0.9, 0.05):
+            y_val_pred = (val_probs > thresh).astype(int)
+            f1_val = f1_score(y_val, y_val_pred, average="binary", zero_division=0)
+            if f1_val > best_f1_val:
+                best_f1_val = f1_val
+                best_thresh = thresh
+        logger.info("Best Threshold: %.2f (Val F1: %.4f)", best_thresh, best_f1_val)
 
     # Evaluate
-    y_pred = clf.predict(x_test)
+    if args.binary_target:
+        y_pred = (clf.predict_proba(x_test)[:, 1] > best_thresh).astype(int)
+        target_names = ["Normal", "Fault"]
+    else:
+        y_pred = clf.predict(x_test)
+        target_names = target_cols
 
     accuracy = accuracy_score(y_test, y_pred)
     hamming = hamming_loss(y_test, y_pred)
     if args.binary_target:
         f1 = f1_score(y_test, y_pred, average="binary", zero_division=0)
-        target_names = ["Normal", "Fault"]
     else:
         f1 = f1_score(y_test, y_pred, average="macro", zero_division=0)
-        target_names = target_cols
 
     report = classification_report(
         y_test, y_pred, target_names=target_names, zero_division=0
@@ -413,6 +437,7 @@ def main():
         f.write(f"Feature Set: {args.feature_set}\n")
         f.write(f"Weight Strategy: {weight_strategy}\n")
         f.write(f"Best Params: {best_params}\n")
+        f.write(f"Best Threshold: {best_thresh:.2f}\n")
         f.write(f"Test F1 Score: {f1:.4f}\n")
         f.write(f"Test Accuracy: {accuracy:.4f}\n")
         f.write(f"Test Hamming Loss: {hamming:.4f}\n")
