@@ -1,0 +1,36 @@
+Mode: Multi-Label
+Window Size: 10
+Feature Set: full
+Best Params: {'max_depth': 15, 'min_samples_split': 145, 'min_samples_leaf': 79, 'criterion': 'entropy', 'ccp_alpha': 2.3263759966571875e-05, 'class_weight': None}
+Best CV Score: 0.3932943647668836
+Best Threshold: 0.50
+Test Subset Accuracy: 0.8473
+Test Hamming Loss: 0.0110
+Test F1 Score: 0.4599
+Model Size (KB): 118.4775
+Inference Time (us/sample): 0.7325
+
+Classification Report:
+              precision    recall  f1-score   support
+
+   fault_ss1       0.92      0.52      0.67       709
+   fault_ss2       0.81      0.51      0.63       743
+   fault_ss3       0.98      0.43      0.60       807
+   fault_ss4       0.86      0.37      0.52       802
+   fault_ss5       0.87      0.60      0.71       675
+   fault_ss6       0.96      0.46      0.62       802
+ fault_magn1       0.90      0.22      0.36      1115
+ fault_magn2       0.78      0.22      0.34       972
+ fault_magn3       0.53      0.30      0.39      1088
+ fault_gyro1       0.00      0.00      0.00      1039
+ fault_gyro2       0.00      0.00      0.00       943
+ fault_gyro3       0.00      0.00      0.00      1097
+  fault_mtq1       1.00      0.49      0.66      1197
+  fault_mtq2       1.00      0.53      0.69       992
+  fault_mtq3       1.00      0.56      0.72       772
+
+   micro avg       0.88      0.33      0.48     13753
+   macro avg       0.71      0.35      0.46     13753
+weighted avg       0.68      0.33      0.44     13753
+ samples avg       0.08      0.07      0.07     13753
+

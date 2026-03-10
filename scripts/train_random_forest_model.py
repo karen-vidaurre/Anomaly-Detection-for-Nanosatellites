@@ -1,4 +1,5 @@
 import argparse
+import gc
 import logging
 import os
 import sys
@@ -41,6 +42,8 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--optimize_metric", type=str, default="f1", choices=["f1", "f2", "recall"])
     parser.add_argument("--feature_set", type=str, default="full", choices=["full", "stat_only"])
     parser.add_argument("--n_jobs", type=int, default=-1, help="Number of cores to use. Set to 1 if memory is an issue.")
+    parser.add_argument("--optuna_subsample", type=float, default=1.0,
+                        help="Fraction of training data to use during Optuna search (e.g. 0.25). Final model always trains on full data.")
     return parser.parse_args()
 
 
@@ -137,6 +140,8 @@ def get_objective(
         else:
             score = f1_score(y_val, y_pred, average="macro", zero_division=0)
 
+        del clf
+        gc.collect()
         return score
 
     return objective
@@ -244,12 +249,26 @@ def main() -> None:
         x_val = scaler.transform(x_val)
         x_test = scaler.transform(x_test)
 
+    # Subsample training data for Optuna search to reduce memory per trial.
+    # The final model is always retrained on the full dataset.
+    if args.optuna_subsample < 1.0:
+        n_sub = max(1, int(len(x_train) * args.optuna_subsample))
+        rng = np.random.default_rng(42)
+        idx = rng.choice(len(x_train), size=n_sub, replace=False)
+        x_train_opt, y_train_opt = x_train[idx], y_train[idx]
+        logger.info("Optuna subsample: %d / %d rows (%.0f%%)", n_sub, len(x_train), args.optuna_subsample * 100)
+    else:
+        x_train_opt, y_train_opt = x_train, y_train
+
     logger.info("Starting Optuna (%d trials)...", args.n_trials)
     study = optuna.create_study(direction="maximize")
     objective = get_objective(
-        x_train, y_train, x_val, y_val, args.binary_target, args.optimize_metric, args.n_jobs
+        x_train_opt, y_train_opt, x_val, y_val, args.binary_target, args.optimize_metric, args.n_jobs
     )
-    study.optimize(objective, n_trials=args.n_trials)
+    study.optimize(objective, n_trials=args.n_trials, gc_after_trial=True)
+
+    del x_train_opt, y_train_opt
+    gc.collect()
 
     logger.info("Best Params: %s", study.best_trial.params)
 
