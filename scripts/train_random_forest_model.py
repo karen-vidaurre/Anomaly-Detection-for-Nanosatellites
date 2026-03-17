@@ -19,6 +19,7 @@ from sklearn.metrics import (
     fbeta_score,
     recall_score,
 )
+from sklearn.multioutput import MultiOutputClassifier
 from sklearn.preprocessing import StandardScaler
 
 logging.basicConfig(
@@ -115,7 +116,7 @@ def get_objective(
         class_weight_opt = trial.suggest_categorical("class_weight", ["balanced", "None"])
         cw = None if class_weight_opt == "None" else "balanced"
 
-        clf = RandomForestClassifier(
+        base_clf = RandomForestClassifier(
             n_estimators=n_estimators,
             max_depth=max_depth,
             min_samples_split=min_samples_split,
@@ -126,6 +127,11 @@ def get_objective(
             n_jobs=n_jobs,
             random_state=42,
         )
+
+        if binary_target:
+            clf = base_clf
+        else:
+            clf = MultiOutputClassifier(base_clf, n_jobs=1)
 
         clf.fit(x_train, y_train)
         y_pred = clf.predict(x_val)
@@ -170,7 +176,16 @@ def evaluate_model(
 
 
 def save_feature_importance(model, feature_names, output_path) -> None:
-    importances = model.feature_importances_
+    if hasattr(model, "feature_importances_"):
+        importances = model.feature_importances_
+    elif hasattr(model, "estimators_"):
+        importances = np.mean(
+            [est.feature_importances_ for est in model.estimators_], axis=0
+        )
+    else:
+        logger.warning("Model has no feature_importances_. Skipping.")
+        return
+
     indices = np.argsort(importances)[::-1]
 
     with open(output_path, "w", encoding="utf-8") as f:
@@ -279,9 +294,15 @@ def main() -> None:
         else:
             best_params["class_weight"] = "balanced"
 
-    best_clf = RandomForestClassifier(
+    base_clf = RandomForestClassifier(
         n_jobs=args.n_jobs, random_state=42, **best_params
     )
+
+    if args.binary_target:
+        best_clf = base_clf
+    else:
+        best_clf = MultiOutputClassifier(base_clf, n_jobs=1)
+
     best_clf.fit(x_train, y_train)
 
     best_thresh = 0.5
