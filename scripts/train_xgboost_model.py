@@ -23,6 +23,7 @@ from sklearn.metrics import (
     hamming_loss,
     recall_score,
 )
+from sklearn.multioutput import MultiOutputClassifier
 from sklearn.preprocessing import StandardScaler
 
 # Configure Logging
@@ -198,18 +199,20 @@ def get_objective(
         if params["grow_policy"] == "lossguide":
             params["max_leaves"] = trial.suggest_int("max_leaves", 16, 64)
 
+        params["objective"] = "binary:logistic"
+        params["eval_metric"] = "logloss"
         if binary_target:
-            params["objective"] = "binary:logistic"
-            params["eval_metric"] = "logloss"
             params["scale_pos_weight"] = current_scale_weight
-        else:
-            params["objective"] = "multi:softprob"
-            params["eval_metric"] = "mlogloss"
 
-        clf = XGBClassifier(**params)
+        base_clf = XGBClassifier(**params)
+
+        if binary_target:
+            clf = base_clf
+        else:
+            clf = MultiOutputClassifier(base_clf, n_jobs=1)
 
         # Fit the model
-        clf.fit(x_train, y_train, verbose=False)
+        clf.fit(x_train, y_train)
         # Evaluate the model
         y_pred = clf.predict(x_val)
 
@@ -236,8 +239,18 @@ def get_objective(
 def save_feature_importance(model, feature_names, output_path):
     """
     Extracts and saves feature importance.
+    For MultiOutputClassifier, averages importance across all estimators.
     """
-    importances = model.feature_importances_
+    if hasattr(model, "feature_importances_"):
+        importances = model.feature_importances_
+    elif hasattr(model, "estimators_"):
+        importances = np.mean(
+            [est.feature_importances_ for est in model.estimators_], axis=0
+        )
+    else:
+        logger.warning("Model has no feature_importances_. Skipping.")
+        return
+
     indices = np.argsort(importances)[::-1]
 
     with open(output_path, "w", encoding="utf-8") as f:
@@ -397,18 +410,20 @@ def main():
     best_params["n_jobs"] = -1
     best_params["random_state"] = 42
     best_params["tree_method"] = "hist"
+    best_params["objective"] = "binary:logistic"
+    best_params["eval_metric"] = "logloss"
 
     if args.binary_target:
-        best_params["objective"] = "binary:logistic"
-        best_params["eval_metric"] = "logloss"
         best_params["scale_pos_weight"] = final_scale_weight
+
+    base_clf = XGBClassifier(**best_params)
+
+    if args.binary_target:
+        clf = base_clf
     else:
-        best_params["objective"] = "multi:softprob"
-        best_params["eval_metric"] = "mlogloss"
+        clf = MultiOutputClassifier(base_clf, n_jobs=1)
 
-    clf = XGBClassifier(**best_params)
-
-    clf.fit(x_train, y_train, verbose=False)
+    clf.fit(x_train, y_train)
 
     best_thresh = 0.5
     if args.binary_target:

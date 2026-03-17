@@ -1,0 +1,34 @@
+Feature Set: full
+Weight Strategy: none
+Best Params: {'max_depth': 7, 'n_estimators': 83, 'reg_alpha': 2.5136342198065788e-08, 'reg_lambda': 1.0701781319655246e-07, 'learning_rate': 0.15243143837899548, 'subsample': 0.726721974211994, 'colsample_bytree': 0.8723835387302002, 'min_child_weight': 7, 'gamma': 4.990303692217018, 'grow_policy': 'depthwise', 'n_jobs': -1, 'random_state': 42, 'tree_method': 'hist', 'objective': 'binary:logistic', 'eval_metric': 'logloss'}
+Best Threshold: 0.50
+Test F1 Score: 0.7631
+Test Accuracy: 0.9145
+Test Hamming Loss: 0.0060
+Model Size (KB): 2783.3047
+Inference Time (us/sample): 14.6384
+
+Classification Report:
+              precision    recall  f1-score   support
+
+   fault_ss1       0.96      0.81      0.88       709
+   fault_ss2       0.98      0.78      0.86       743
+   fault_ss3       0.98      0.86      0.92       807
+   fault_ss4       0.97      0.79      0.87       802
+   fault_ss5       0.96      0.80      0.87       675
+   fault_ss6       0.98      0.81      0.89       802
+ fault_magn1       0.96      0.68      0.79      1115
+ fault_magn2       0.92      0.69      0.79       972
+ fault_magn3       0.93      0.63      0.75      1088
+ fault_gyro1       0.93      0.31      0.46      1039
+ fault_gyro2       0.88      0.30      0.45       943
+ fault_gyro3       0.90      0.35      0.50      1097
+  fault_mtq1       0.98      0.63      0.77      1197
+  fault_mtq2       0.99      0.73      0.84       992
+  fault_mtq3       0.99      0.68      0.81       772
+
+   micro avg       0.96      0.64      0.77     13753
+   macro avg       0.95      0.66      0.76     13753
+weighted avg       0.95      0.64      0.75     13753
+ samples avg       0.14      0.13      0.13     13753
+
