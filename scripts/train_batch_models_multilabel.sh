@@ -14,7 +14,7 @@ for w in "${WINDOWS[@]}"; do
     echo ">> Training Random Forest (Refined)..."
     venv/bin/python3 scripts/train_random_forest_model.py \
         --window_size $w \
-        --n_trials 30 \
+        --n_trials 50 \
         --feature_set full \
         --optimize_metric f1 \
         --n_jobs 1 \
@@ -25,7 +25,7 @@ for w in "${WINDOWS[@]}"; do
     echo ">> Training XGBoost (Embedded)..."
     venv/bin/python3 scripts/train_xgboost_model.py \
         --window_size $w \
-        --n_trials 30 \
+        --n_trials 50 \
         --feature_set full \
         --optimize_metric f1 \
         --optuna_subsample 0.25
@@ -34,7 +34,7 @@ for w in "${WINDOWS[@]}"; do
     echo ">> Training Decision Tree (Optimized)..."
     venv/bin/python3 scripts/train_decision_tree_model.py \
         --window_size $w \
-        --n_trials 30 \
+        --n_trials 50 \
         --feature_set full \
         --optimize_metric f1 \
         --optuna_subsample 0.25
