@@ -1,36 +1,36 @@
 Mode: Multi-Label
 Window Size: 1
 Feature Set: full
-Best Params: {'n_estimators': 62, 'max_depth': 14, 'min_samples_split': 102, 'min_samples_leaf': 22, 'max_leaf_nodes': 119, 'max_samples': 0.6149644713293793, 'class_weight': None}
-Best CV Score: 0.21054567447565947
+Best Params: {'n_estimators': 57, 'max_depth': 13, 'min_samples_split': 25, 'min_samples_leaf': 14, 'max_leaf_nodes': 115, 'max_samples': 0.6043446039733666, 'class_weight': 'balanced'}
+Best CV Score: 0.6224011887753355
 Best Threshold: 0.50
-Test Subset Accuracy: 0.8131
-Test Hamming Loss: 0.0136
-Test F1 Score: 0.1940
-Model Size (KB): 3577.8057
-Inference Time (us/sample): 16.1716
+Test Subset Accuracy: 0.6391
+Test Hamming Loss: 0.0305
+Test F1 Score: 0.4843
+Model Size (KB): 15635.9229
+Inference Time (us/sample): 24.8729
 
 Classification Report:
               precision    recall  f1-score   support
 
-   fault_ss1       1.00      0.16      0.27       709
-   fault_ss2       1.00      0.14      0.25       743
-   fault_ss3       1.00      0.14      0.24       807
-   fault_ss4       0.99      0.16      0.28       802
-   fault_ss5       1.00      0.17      0.30       675
-   fault_ss6       1.00      0.16      0.27       802
- fault_magn1       0.98      0.04      0.07      1115
- fault_magn2       0.00      0.00      0.00       972
- fault_magn3       0.00      0.00      0.00      1088
- fault_gyro1       0.00      0.00      0.00      1039
- fault_gyro2       0.00      0.00      0.00       943
- fault_gyro3       0.00      0.00      0.00      1097
-  fault_mtq1       1.00      0.26      0.42      1197
-  fault_mtq2       1.00      0.23      0.37       992
-  fault_mtq3       1.00      0.28      0.44       772
+   fault_ss1       0.37      0.83      0.52       709
+   fault_ss2       0.39      0.92      0.54       743
+   fault_ss3       0.38      0.85      0.53       807
+   fault_ss4       0.29      0.84      0.43       802
+   fault_ss5       0.40      0.86      0.54       675
+   fault_ss6       0.51      0.82      0.63       802
+ fault_magn1       0.24      0.73      0.36      1115
+ fault_magn2       0.21      0.70      0.32       972
+ fault_magn3       0.23      0.64      0.34      1088
+ fault_gyro1       0.18      0.38      0.24      1039
+ fault_gyro2       0.12      0.54      0.20       943
+ fault_gyro3       0.14      0.55      0.22      1097
+  fault_mtq1       0.92      0.66      0.77      1197
+  fault_mtq2       0.94      0.76      0.84       992
+  fault_mtq3       0.91      0.69      0.78       772
 
-   micro avg       1.00      0.11      0.20     13753
-   macro avg       0.66      0.12      0.19     13753
-weighted avg       0.62      0.11      0.18     13753
- samples avg       0.03      0.02      0.02     13753
+   micro avg       0.29      0.70      0.41     13753
+   macro avg       0.41      0.72      0.48     13753
+weighted avg       0.41      0.70      0.48     13753
+ samples avg       0.12      0.14      0.13     13753
 
