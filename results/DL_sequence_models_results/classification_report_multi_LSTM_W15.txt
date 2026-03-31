@@ -1,0 +1,36 @@
+Window Size: 15
+Evaluation: ONLY anomalous windows (mask_anom)
+Anomalous windows in test: 25774 / 59984
+Best Params: {'n_units': 96, 'n_layers': 2, 'dropout': 0.15187668878119676, 'lr': 0.0008519046913660526, 'l2_reg': 2.048478528725324e-05, 'batch_size': 64}
+Best Threshold: 0.36
+
+Macro-Precision: 0.7658
+Macro-Recall:    0.7067
+Macro-F1:        0.7299
+Micro-F1:        0.7228
+Hamming Loss:    0.0188
+Model Size KB:   1494.6865
+Inference µs:    70.0283
+
+              precision    recall  f1-score   support
+
+   fault_ss1     0.8341    0.8152    0.8245       709
+   fault_ss2     0.8492    0.8264    0.8377       743
+   fault_ss3     0.8537    0.8823    0.8678       807
+   fault_ss4     0.8231    0.8529    0.8377       802
+   fault_ss5     0.8032    0.8830    0.8412       675
+   fault_ss6     0.7966    0.8691    0.8312       802
+ fault_magn1     0.8115    0.7874    0.7993      1115
+ fault_magn2     0.7836    0.8086    0.7959       972
+ fault_magn3     0.7717    0.7923    0.7819      1088
+ fault_gyro1     0.4895    0.4042    0.4428      1039
+ fault_gyro2     0.5067    0.4443    0.4734       943
+ fault_gyro3     0.4829    0.3993    0.4371      1097
+  fault_mtq1     0.9072    0.5798    0.7074      1197
+  fault_mtq2     0.9106    0.6472    0.7566       992
+  fault_mtq3     0.8640    0.6088    0.7143       772
+
+   micro avg     0.7588    0.6900    0.7228     13753
+   macro avg     0.7658    0.7067    0.7299     13753
+weighted avg     0.7584    0.6900    0.7172     13753
+ samples avg     0.3452    0.3377    0.3381     13753

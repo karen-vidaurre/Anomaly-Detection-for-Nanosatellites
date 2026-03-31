@@ -1,0 +1,29 @@
+Model: GRU (bidireccional=True)
+Window: 20
+Macro-F1: 0.7355
+Micro-F1: 0.7281
+Hamming: 0.0167
+Size KB: 1372.3936
+
+              precision    recall  f1-score   support
+
+   fault_ss1     0.8211    0.8674    0.8436       709
+   fault_ss2     0.7982    0.8573    0.8267       743
+   fault_ss3     0.8265    0.9269    0.8738       807
+   fault_ss4     0.7952    0.8766    0.8339       802
+   fault_ss5     0.7782    0.8993    0.8344       675
+   fault_ss6     0.7642    0.9052    0.8288       802
+ fault_magn1     0.7712    0.8009    0.7857      1115
+ fault_magn2     0.7666    0.8076    0.7866       972
+ fault_magn3     0.7526    0.8107    0.7805      1088
+ fault_gyro1     0.4606    0.4610    0.4608      1039
+ fault_gyro2     0.5193    0.4146    0.4611       943
+ fault_gyro3     0.5100    0.4640    0.4859      1097
+  fault_mtq1     0.8423    0.6023    0.7024      1197
+  fault_mtq2     0.8594    0.7208    0.7840       992
+  fault_mtq3     0.8591    0.6554    0.7436       772
+
+   micro avg     0.7352    0.7211    0.7281     13753
+   macro avg     0.7416    0.7380    0.7355     13753
+weighted avg     0.7339    0.7211    0.7230     13753
+ samples avg     0.3147    0.3083    0.3086     13753
