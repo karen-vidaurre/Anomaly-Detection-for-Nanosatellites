@@ -193,6 +193,21 @@ np.save(os.path.join(EXP_DIR, "dwt_std.npy"), std)
 np.save(os.path.join(EXP_DIR, "input_mean.npy"), mean_feat)
 np.save(os.path.join(EXP_DIR, "input_std.npy"), std_feat)
 
+# Agregar esto en tu script, justo después de y_pred
+from sklearn.metrics import hamming_loss
+
+hamming_sc = 1 - hamming_loss(y_ch_test, y_pred)
+exact_match = accuracy_score(y_ch_test, y_pred)
+
+print(f"Hamming Score : {hamming_sc*100:.2f}%")
+print(f"Exact Match   : {exact_match*100:.2f}%")
+
+# Guardarlo en el JSON también
+report["hamming_score"] = hamming_sc
+report["exact_match_accuracy"] = exact_match
+
+# with open(os.path.join(EXP_DIR, "classification_report.json"), "w") as f:
+#     json.dump(report, f, indent=4)
 # Save classification report
 import json
 with open(os.path.join(EXP_DIR, "classification_report.json"), "w") as f:

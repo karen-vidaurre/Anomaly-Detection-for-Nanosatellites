@@ -1,0 +1,23 @@
+{
+    "adaptive": {
+        "macro_f1": 0.5823,
+        "micro_f1": 0.5818,
+        "macro_precision": 0.9161,
+        "macro_recall": 0.4338,
+        "accuracy": 0.9868
+    },
+    "fixed_07": {
+        "macro_f1": 0.5211,
+        "micro_f1": 0.5156,
+        "macro_precision": 0.7482,
+        "macro_recall": 0.46,
+        "accuracy": 0.9819
+    },
+    "delta": {
+        "macro_f1": 0.0612,
+        "micro_f1": 0.0662,
+        "macro_precision": 0.1679,
+        "macro_recall": -0.0262,
+        "accuracy": 0.0049
+    }
+}

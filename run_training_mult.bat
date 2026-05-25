@@ -24,10 +24,10 @@ for %%w in (%WINDOWS%) do (
     @REM echo.
 
     echo ======================================
-    echo Wavelet multilabel LR classification masked for window size %%w
+    echo Wavelet multilabel LR classification - Adaptative Threshold window size %%w
     echo ======================================
 
-    python scripts\ML3_wav_LR_test_mask.py --window_size %%w
+    python scripts\ML5_wav_LR_AT.py --window_size %%w
 
     echo Done window size %%w
     echo.
