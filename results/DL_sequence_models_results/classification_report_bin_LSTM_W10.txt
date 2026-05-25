@@ -1,0 +1,22 @@
+Window Size: 10
+Best Params: {'n_units': 48, 'n_layers': 2, 'dropout': 0.13771839763626148, 'lr': 0.00350653111436596, 'l2_reg': 1.6118070959044468e-05, 'batch_size': 256}
+Best Threshold: 0.44
+
+Test F1 Score:    0.8997
+Test Precision:   0.9891
+Test Recall:      0.8251
+Test Accuracy:    0.9341
+Test AUC:         0.9271
+Test Hamming:     0.0659
+Model Size (KB):  432.2256
+Inference (µs):   64.9856
+
+              precision    recall  f1-score   support
+
+      Normal     0.9106    0.9949    0.9509     38491
+       Fault     0.9891    0.8251    0.8997     21498
+
+    accuracy                         0.9341     59989
+   macro avg     0.9499    0.9100    0.9253     59989
+weighted avg     0.9388    0.9341    0.9326     59989
+

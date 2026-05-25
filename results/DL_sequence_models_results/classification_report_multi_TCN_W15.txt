@@ -1,0 +1,31 @@
+Model: TCN
+Window: 15
+Macro-F1: 0.6666
+Micro-F1: 0.6612
+Macro-Precision: 0.6928
+Macro-Recall: 0.6544
+Hamming Loss: 0.0233
+Size KB: 492.7998
+
+              precision    recall  f1-score   support
+
+   fault_ss1     0.7991    0.7630    0.7807       709
+   fault_ss2     0.7759    0.7550    0.7653       743
+   fault_ss3     0.7443    0.8079    0.7748       807
+   fault_ss4     0.7812    0.8105    0.7956       802
+   fault_ss5     0.7168    0.8400    0.7735       675
+   fault_ss6     0.7695    0.7993    0.7841       802
+ fault_magn1     0.6542    0.7552    0.7011      1115
+ fault_magn2     0.6456    0.7685    0.7017       972
+ fault_magn3     0.6892    0.7482    0.7175      1088
+ fault_gyro1     0.4315    0.3696    0.3981      1039
+ fault_gyro2     0.4608    0.3362    0.3887       943
+ fault_gyro3     0.4525    0.3345    0.3847      1097
+  fault_mtq1     0.8195    0.5272    0.6416      1197
+  fault_mtq2     0.8550    0.6240    0.7214       992
+  fault_mtq3     0.7964    0.5777    0.6697       772
+
+   micro avg     0.6859    0.6383    0.6612     13753
+   macro avg     0.6928    0.6544    0.6666     13753
+weighted avg     0.6836    0.6383    0.6532     13753
+ samples avg     0.3262    0.3153    0.3173     13753

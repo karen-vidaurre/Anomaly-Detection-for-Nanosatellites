@@ -1,0 +1,22 @@
+Window Size: 5
+Input: DWT detail coef D + rolling_mean
+Best Params: {'n_units': 64, 'n_layers': 2, 'dropout': 0.1347900311735653, 'lr': 0.0006553161612443803, 'l2_reg': 5.2392611418751894e-05, 'batch_size': 128}
+Best Threshold: 0.50
+
+Test F1 Score:    0.8193
+Test Precision:   0.9451
+Test Recall:      0.7231
+Test Accuracy:    0.9112
+Test AUC:         0.8829
+Test Hamming:     0.0888
+Model Size (KB):  708.7861
+Inference (µs):   66.3899
+
+              precision    recall  f1-score   support
+
+      Normal     0.9020    0.9838    0.9411     43281
+       Fault     0.9451    0.7231    0.8193     16714
+
+    accuracy                         0.9112     59995
+   macro avg     0.9235    0.8534    0.8802     59995
+weighted avg     0.9140    0.9112    0.9072     59995
