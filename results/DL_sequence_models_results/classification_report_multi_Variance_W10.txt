@@ -1,0 +1,35 @@
+variance_v2 — ws=10
+USE_MASK=True
+Parámetro: τ=[0.0613 0.0633 0.0744 0.06   0.0645 0.0611 0.0388 0.0421 0.0357 0.0256
+ 0.0262 0.0276 0.     0.     0.    ]
+
+Binary F1:       0.6594
+Binary Prec:     0.6227
+Binary Recall:   0.7007
+
+Multilabel Macro-F1:  0.5976
+Multilabel Micro-F1:  0.6087
+Hamming Loss:         0.0577
+
+              precision    recall  f1-score   support
+
+   fault_ss1     0.6357    0.6305    0.6331      1456
+   fault_ss2     0.6481    0.7147    0.6798      1500
+   fault_ss3     0.7553    0.6241    0.6835      1652
+   fault_ss4     0.6370    0.7494    0.6887      1672
+   fault_ss5     0.6425    0.6923    0.6665      1485
+   fault_ss6     0.6688    0.6105    0.6383      1710
+ fault_magn1     0.5057    0.5415    0.5230      2046
+ fault_magn2     0.4977    0.5994    0.5439      1805
+ fault_magn3     0.4772    0.6007    0.5319      1936
+ fault_gyro1     0.8655    0.1565    0.2650      1975
+ fault_gyro2     1.0000    0.1637    0.2814      1753
+ fault_gyro3     0.9958    0.2366    0.3823      1991
+  fault_mtq1     0.9987    0.7021    0.8245      2135
+  fault_mtq2     1.0000    0.7091    0.8298      1791
+  fault_mtq3     0.9989    0.6567    0.7924      1433
+
+   micro avg     0.6821    0.5496    0.6087     26340
+   macro avg     0.7551    0.5592    0.5976     26340
+weighted avg     0.7580    0.5496    0.5902     26340
+ samples avg     0.5287    0.5457    0.5188     26340
