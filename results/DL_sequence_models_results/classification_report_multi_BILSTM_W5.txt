@@ -1,0 +1,29 @@
+Model: BiLSTM + Temporal Attention
+Window: 5
+Macro-F1: 0.6244
+Micro-F1: 0.6288
+Hamming: 0.0335
+Size KB: 1862.4375
+
+              precision    recall  f1-score   support
+
+   fault_ss1     0.8924    0.5501    0.6806       709
+   fault_ss2     0.8930    0.7524    0.8167       743
+   fault_ss3     0.8691    0.6419    0.7384       807
+   fault_ss4     0.8871    0.6958    0.7799       802
+   fault_ss5     0.8845    0.7378    0.8045       675
+   fault_ss6     0.8468    0.7170    0.7765       802
+ fault_magn1     0.8047    0.7354    0.7685      1115
+ fault_magn2     0.7946    0.7006    0.7447       972
+ fault_magn3     0.7558    0.6314    0.6880      1088
+ fault_gyro1     0.5304    0.2522    0.3418      1039
+ fault_gyro2     0.5379    0.2407    0.3326       943
+ fault_gyro3     0.4857    0.1705    0.2524      1097
+  fault_mtq1     0.9304    0.3910    0.5506      1197
+  fault_mtq2     0.8794    0.3821    0.5327       992
+  fault_mtq3     0.8848    0.4080    0.5585       772
+
+   micro avg     0.7999    0.5180    0.6288     13753
+   macro avg     0.7918    0.5338    0.6244     13753
+weighted avg     0.7807    0.5180    0.6086     13753
+ samples avg     0.4063    0.3888    0.3929     13753
