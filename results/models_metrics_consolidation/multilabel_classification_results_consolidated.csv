@@ -1,0 +1,49 @@
+file,model,window_size,macro_f1,micro_f1,hamming,model_size_kb,subset_accuracy,hamming_loss,inference_time,precision_macro,recall_macro,support
+WaveletThresholds_W5,Wavelet Thresholds,5,0.39081070328821393,0.4278020206785391,,,,,,0.9334235127096844,0.2893702512638617,19365.0
+WaveletThresholds_W10,Wavelet Thresholds,10,0.48319220091090637,0.5155878652313715,,,,,,0.9777781109622687,0.3532538702292279,26340.0
+WaveletThresholds_W15,Wavelet Thresholds,15,0.5206083421505133,0.5621786736076753,,,,,,0.9829953345181969,0.3984596598396191,33270.0
+WaveletThresholds_W20,Wavelet Thresholds,20,0.5405438390649586,0.5744213023078655,,,,,,0.9578455945764275,0.4225916638754175,40153.0
+classification_report_multi_LSTM_W5.txt,LSTM,5.0,0.6508,0.6488,,713.9248,,,,,,
+classification_report_multi_LSTM_W10.txt,LSTM,10.0,0.6725,0.6672,,713.9268,,,,,,
+classification_report_multi_LSTM_W15.txt,LSTM,15.0,0.7299,0.7228,,1494.6865,,,,,,
+classification_report_multi_LSTM_W20.txt,LSTM,20.0,0.7194,0.715,,1494.6865,,,,,,
+classification_report_multi_GRU_W5.txt,GRU,5.0,0.6626,0.6574,0.0347,1372.3818,,,,,,
+classification_report_multi_GRU_W10.txt,GRU,10.0,0.6704,0.6667,0.0259,1372.3818,,,,,,
+classification_report_multi_GRU_W15.txt,GRU,15.0,0.7416,0.7348,0.0176,1372.3936,,,,,,
+classification_report_multi_GRU_W20.txt,GRU,20.0,0.7355,0.7281,0.0167,1372.3936,,,,,,
+classification_report_multi_BILSTM_W5.txt,BiLSTM+Temporal Attention,5.0,0.6244,0.6288,0.0335,1862.4375,,,,,,
+classification_report_multi_BILSTM_W10.txt,BiLSTM+Temporal Attention,10.0,0.6696,0.6647,0.0267,1862.4385,,,,,,
+classification_report_multi_BILSTM_W15.txt,BiLSTM+Temporal Attention,15.0,0.7526,0.7473,0.017,1886.8252,,,,,,
+classification_report_multi_BILSTM_W20.txt,BiLSTM+Temporal Attention,20.0,0.7223,0.7207,0.0164,1862.4541,,,,,,
+classification_report_multi_CNN_LSTM_W5.txt,CNN+LSTM,5.0,0.5809,0.5829,0.0375,544.3145,,,,,,
+classification_report_multi_CNN_LSTM_W10.txt,CNN+LSTM,10.0,0.5779,0.5691,0.0342,422.9385,,,,,,
+classification_report_multi_CNN_LSTM_W15.txt,CNN+LSTM,15.0,0.6494,0.6436,0.0237,422.96,,,,,,
+classification_report_multi_CNN_LSTM_W20.txt,CNN+LSTM,20.0,0.6862,0.6838,0.0181,884.1367,,,,,,
+classification_report_multi_Variance_W5.txt,Variance-based Thresholding,5.0,0.6109,0.6205,,,,,,,,
+classification_report_multi_Variance_W10.txt,Variance-based Thresholding,10.0,0.5976,0.6087,,,,,,,,
+classification_report_multi_Variance_W15.txt,Variance-based Thresholding,15.0,0.5442,0.5494,,,,,,,,
+classification_report_multi_Variance_W20.txt,Variance-based Thresholding,20.0,0.5045,0.4975,,,,,,,,
+classification_report_multi_Adaptative_W5.txt,Adaptive Variance Thresholding,5.0,0.5642,0.5842,,,,,,,,
+classification_report_multi_Adaptative_W10.txt,Adaptive Variance Thresholding,10.0,0.5789,0.5921,,,,,,,,
+classification_report_multi_Adaptative_W15.txt,Adaptive Variance Thresholding,15.0,0.5523,0.5492,,,,,,,,
+classification_report_multi_Adaptative_W20.txt,Adaptive Variance Thresholding,20.0,0.52,0.5117,,,,,,,,
+classification_report_multi_DTree_W5.txt,CART,5.0,0.7279,,,159.9229,0.8992,0.0071,1.1951,,,
+classification_report_multi_DTree_W10.txt,CART,10.0,0.7334,,,217.1104,0.9002,0.007,1.2552,,,
+classification_report_multi_DTree_W15.txt,CART,15.0,0.7373,,,365.5479,0.899,0.0071,1.3355,,,
+classification_report_multi_DTree_W20.txt,CART,20.0,0.7083,,,128.9854,0.8915,0.0077,1.269,,,
+classification_report_multi_XGB_W5.txt,XGBoost,5.0,0.771,,,5361.6484,,0.0058,14.2892,,,
+classification_report_multi_XGB_W10.txt,XGBoost,10.0,0.7584,,,3579.3359,,0.006,12.0516,,,
+classification_report_multi_XGB_W15.txt,XGBoost,15.0,0.7615,,,5322.3047,,0.006,14.6405,,,
+classification_report_multi_XGB_W20.txt,XGBoost,20.0,0.7455,,,3254.3516,,0.0064,10.7221,,,
+classification_report_multi_RandomF_W5.txt,Random Forest,5.0,0.6971,,,14667.8916,0.8993,0.0071,18.9209,,,
+classification_report_multi_RandomF_W10.txt,Random Forest,10.0,0.6581,,,12778.3604,0.8908,0.0077,22.1254,,,
+classification_report_multi_RandomF_W15.txt,Random Forest,15.0,0.5177,,,18751.0791,0.7148,0.0221,25.9787,,,
+classification_report_multi_RandomF_W20.txt,Random Forest,20.0,0.5155,,,9016.3916,0.6929,0.0242,15.5154,,,
+WELR_W5,WELR,5,0.5237411475077294,0.521694152011197,,,,,,0.7478500480785503,0.4550809115232293,19365.0
+WELR_W10,WELR,10,0.6370034669968981,0.6300012542330365,,,,,,0.766384576949313,0.5784717215013906,26340.0
+WELR_W15,WELR,15,0.7206220965016971,0.7186171625929861,,,,,,0.8261189321145826,0.654908261731334,33270.0
+WELR_W20,WELR,20,0.7468753128729041,0.7452941987046989,,,,,,0.8509560108963617,0.6765052011767902,40153.0
+WMCNN_W5,WMCNN,5,0.7019348268660106,0.7057243908828923,,,,,,0.9611703971890442,0.5684457715323193,19365.0
+WMCNN_W10,WMCNN,10,0.819129460350058,0.821683183614011,,,,,,0.9803293023584323,0.7142558780974485,26340.0
+WMCNN_W15,WMCNN,15,0.8626412259408658,0.8659050315101271,,,,,,0.9850004591500436,0.7789040578466953,33270.0
+WMCNN_W20,WMCNN,20,0.8768794490479819,0.8804979481671211,,,,,,0.984998993386665,0.8019032449430769,40153.0
