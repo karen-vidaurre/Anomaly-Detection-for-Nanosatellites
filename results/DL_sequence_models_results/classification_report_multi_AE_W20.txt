@@ -1,0 +1,38 @@
+Window Size: 20
+Approach: Shared Conv1D encoder -> reconstruction decoder + sigmoid classification head (multi-task)
+Evaluation: ONLY anomalous windows (mask_anom)
+Anomalous windows in test: 29572 / 59978
+Best Params: {'filters': 16, 'n_layers': 3, 'kernel_size': 7, 'latent_dim': 64, 'dropout': 0.24358078747765152, 'lr': 0.0007830247302910835, 'l2_reg': 1.7844014332377384e-05, 'batch_size': 256, 'threshold': 0.4202973199864408, 'recon_weight': 0.15555635113209948}
+Best Threshold: 0.38
+
+Macro-Precision: 0.5198
+Macro-Recall:    0.5472
+Macro-F1:        0.5170
+Micro-F1:        0.5311
+Hamming Loss:    0.0291
+Model Size KB:   458.7070
+Inference us:    87.5708
+TFLite Macro-F1: 0.4983
+
+              precision    recall  f1-score   support
+
+   fault_ss1     0.5700    0.7066    0.6310       709
+   fault_ss2     0.4779    0.6393    0.5469       743
+   fault_ss3     0.5235    0.5787    0.5497       807
+   fault_ss4     0.5350    0.6097    0.5699       802
+   fault_ss5     0.4402    0.7200    0.5464       675
+   fault_ss6     0.5386    0.7045    0.6105       802
+ fault_magn1     0.5088    0.6502    0.5709      1115
+ fault_magn2     0.4799    0.6759    0.5613       972
+ fault_magn3     0.5429    0.5928    0.5668      1088
+ fault_gyro1     0.3399    0.1338    0.1920      1039
+ fault_gyro2     0.4272    0.1463    0.2180       943
+ fault_gyro3     0.4363    0.2215    0.2938      1097
+  fault_mtq1     0.6570    0.5472    0.5971      1197
+  fault_mtq2     0.6971    0.6613    0.6787       992
+  fault_mtq3     0.6229    0.6205    0.6217       772
+
+   micro avg     0.5301    0.5322    0.5311     13753
+   macro avg     0.5198    0.5472    0.5170     13753
+weighted avg     0.5204    0.5322    0.5095     13753
+ samples avg     0.2448    0.2322    0.2359     13753

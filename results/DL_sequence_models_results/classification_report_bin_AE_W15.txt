@@ -1,0 +1,17 @@
+Window Size: 15
+Approach: 1D Conv Autoencoder, trained on nominal-only windows; anomaly score = mean squared reconstruction error
+Best Params: {'filters': 32, 'n_layers': 2, 'kernel_size': 3, 'latent_dim': 8, 'dropout': 0.10617534828874074, 'lr': 0.004665303012212832, 'l2_reg': 0.000462258900102083, 'batch_size': 64}
+Best Threshold: 0.191288
+Test F1: 0.7419
+Keras size KB: 235.0332
+TFLite int8 size KB: 35.1719
+TFLite F1: 0.6934
+
+              precision    recall  f1-score   support
+
+      Normal     0.7759    0.9324    0.8470     34210
+     Anomaly     0.8775    0.6425    0.7419     25774
+
+    accuracy                         0.8079     59984
+   macro avg     0.8267    0.7875    0.7944     59984
+weighted avg     0.8196    0.8079    0.8018     59984
